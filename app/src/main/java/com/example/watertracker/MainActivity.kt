@@ -2,12 +2,12 @@ package com.example.watertracker
 
 import android.Manifest
 import android.app.Activity
-import android.app.NotificationChannel
-import android.app.NotificationManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -23,80 +23,120 @@ import androidx.camera.core.Preview
 import androidx.camera.core.CameraSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
-import androidx.core.app.ActivityCompat
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
     private var totalMl = 0
+    private val dailyGoalMl = 2000
     private lateinit var totalText: TextView
+    private lateinit var progressText: TextView
+    private lateinit var locationText: TextView
     private lateinit var cameraPreview: PreviewView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (it) startCamera() else toast("Camera permission is needed for scanning.")
+        if (it) startCamera() else toast("Camera permission was not granted.")
     }
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (it) startVoiceInput() else toast("Microphone permission is needed for voice logging.")
+        if (it) startVoiceInput() else toast("Microphone permission was not granted.")
     }
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (it) showReminderNotification()
+    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        if (it) showApproximateLocation() else locationText.text = "Location access: not allowed"
     }
     private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) {
-        if (it != null) toast("Photo captured.")
-    }
-    private val contactPicker = registerForActivityResult(ActivityResultContracts.PickContact()) { uri: Uri? ->
-        if (uri != null) toast("Contact selected.")
-    }
-    private val audioPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        if (uri != null) toast("Audio selected.")
+        if (it != null) toast("Photo captured successfully.")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        createNotificationChannel()
+        loadTodayTotal()
         buildUi()
     }
 
     private fun buildUi() {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 36, 32, 24)
+            setPadding(36, 40, 36, 32)
         }
+
         layout.addView(TextView(this).apply {
             text = "💧 Water Tracker"
-            textSize = 26f
+            textSize = 28f
+            setPadding(0, 0, 0, 12)
         })
+
+        layout.addView(TextView(this).apply {
+            text = "Track your daily hydration"
+            textSize = 16f
+        })
+
         totalText = TextView(this).apply {
-            text = "Today's water: 0 ml"
-            textSize = 22f
-            setPadding(0, 24, 0, 24)
+            textSize = 25f
+            setPadding(0, 28, 0, 8)
         }
         layout.addView(totalText)
+
+        progressText = TextView(this).apply {
+            textSize = 16f
+            setPadding(0, 0, 0, 18)
+        }
+        layout.addView(progressText)
+        refreshWaterDisplay()
+
         addButton(layout, "Add 250 ml") { addWater(250) }
         addButton(layout, "Add 500 ml") { addWater(500) }
-        addButton(layout, "Voice log water") { requestVoice() }
-        addButton(layout, "Open barcode / QR scanner") {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) startCamera()
+        addButton(layout, "Undo last 250 ml") { addWater(-250) }
+        addButton(layout, "Reset today's total") {
+            totalMl = 0
+            saveTodayTotal()
+            refreshWaterDisplay()
+        }
+
+        addSectionTitle(layout, "Voice logging")
+        addButton(layout, "🎙 Speak to log water") { requestVoice() }
+
+        addSectionTitle(layout, "Camera tools")
+        addButton(layout, "Scan a bottle barcode / QR code") {
+            if (hasPermission(Manifest.permission.CAMERA)) startCamera()
+            else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+        addButton(layout, "Take a water bottle photo") {
+            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
             else cameraPermission.launch(Manifest.permission.CAMERA)
         }
         cameraPreview = PreviewView(this).apply {
             layoutParams = LinearLayout.LayoutParams(-1, 420)
         }
         layout.addView(cameraPreview)
-        addButton(layout, "Take a photo") { photoPicker.launch(null) }
-        addButton(layout, "Choose music / audio") { audioPicker.launch(arrayOf("audio/*")) }
-        addButton(layout, "Choose a contact") { contactPicker.launch(null) }
-        addButton(layout, "Open phone dialler") {
-            startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:")))
+
+        addSectionTitle(layout, "Approximate location")
+        locationText = TextView(this).apply {
+            text = "Location access has not been requested."
+            textSize = 15f
+            setPadding(0, 8, 0, 8)
         }
-        addButton(layout, "Test reminder notification") { requestNotification() }
+        layout.addView(locationText)
+        addButton(layout, "Check approximate location") {
+            if (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) showApproximateLocation()
+            else locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+
         setContentView(ScrollView(this).apply { addView(layout) })
+    }
+
+    private fun addSectionTitle(parent: LinearLayout, title: String) {
+        parent.addView(TextView(this).apply {
+            text = title
+            textSize = 19f
+            setPadding(0, 28, 0, 8)
+        })
     }
 
     private fun addButton(parent: LinearLayout, label: String, action: () -> Unit) {
@@ -106,20 +146,44 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun hasPermission(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
+
     private fun addWater(amount: Int) {
-        totalMl += amount
+        totalMl = (totalMl + amount).coerceAtLeast(0)
+        saveTodayTotal()
+        refreshWaterDisplay()
+    }
+
+    private fun refreshWaterDisplay() {
         totalText.text = "Today's water: $totalMl ml"
+        val percent = ((totalMl * 100) / dailyGoalMl).coerceAtMost(100)
+        progressText.text = "Daily goal: $dailyGoalMl ml  •  $percent% completed"
+    }
+
+    private fun todayKey(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+
+    private fun loadTodayTotal() {
+        val prefs = getSharedPreferences("water_tracker", Context.MODE_PRIVATE)
+        totalMl = if (prefs.getString("date", "") == todayKey()) prefs.getInt("total_ml", 0) else 0
+    }
+
+    private fun saveTodayTotal() {
+        getSharedPreferences("water_tracker", Context.MODE_PRIVATE).edit()
+            .putString("date", todayKey())
+            .putInt("total_ml", totalMl)
+            .apply()
     }
 
     private fun requestVoice() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            startVoiceInput()
-        } else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        if (hasPermission(Manifest.permission.RECORD_AUDIO)) startVoiceInput()
+        else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
     }
 
     private fun startVoiceInput() {
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            toast("Speech recognition is not available.")
+            toast("Speech recognition is not available on this device.")
             return
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -140,7 +204,7 @@ class MainActivity : AppCompatActivity() {
             when {
                 spoken.contains("500") -> addWater(500)
                 spoken.contains("250") -> addWater(250)
-                else -> toast("Say 250 or 500 millilitres to log water.")
+                else -> toast("Please say 250 ml or 500 ml.")
             }
         }
     }
@@ -151,7 +215,9 @@ class MainActivity : AppCompatActivity() {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
-            val preview = Preview.Builder().build().also { it.setSurfaceProvider(cameraPreview.surfaceProvider) }
+            val preview = Preview.Builder().build().also {
+                it.setSurfaceProvider(cameraPreview.surfaceProvider)
+            }
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .build()
@@ -165,7 +231,7 @@ class MainActivity : AppCompatActivity() {
                     scanner.process(image)
                         .addOnSuccessListener { codes ->
                             codes.firstOrNull()?.rawValue?.let { value ->
-                                runOnUiThread { toast("Scanned: $value") }
+                                runOnUiThread { toast("Barcode / QR: $value") }
                             }
                         }
                         .addOnCompleteListener { proxy.close() }
@@ -182,35 +248,25 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun requestNotification() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else showReminderNotification()
-    }
+    @Suppress("MissingPermission")
+    private fun showApproximateLocation() {
+        if (!hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) return
+        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
+        val location: Location? = providers.asSequence()
+            .filter { provider -> runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false) }
+            .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
+            .minByOrNull { it.accuracy }
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= 26) {
-            val channel = NotificationChannel("water_reminders", "Water reminders", NotificationManager.IMPORTANCE_DEFAULT)
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+        locationText.text = if (location == null) {
+            "Approximate location: unavailable. Turn on Location and try again."
+        } else {
+            "Approximate location available (accuracy about ${location.accuracy.toInt()} metres)."
         }
     }
 
-    private fun showReminderNotification() {
-        val notification = NotificationCompat.Builder(this, "water_reminders")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Water Tracker")
-            .setContentText("Time to drink some water.")
-            .setAutoCancel(true)
-            .build()
-        val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT < 33 ||
-            ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) {
-            manager.notify(1, notification)
-        }
-    }
-
-    private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    private fun toast(message: String) =
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
     override fun onDestroy() {
         super.onDestroy()
