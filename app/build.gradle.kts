@@ -31,4 +31,5 @@ dependencies {
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("androidx.health.connect:connect-client:1.1.0")
+    implementation("com.google.guava:listenablefuture:1.0")
 }
