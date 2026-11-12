@@ -4,7 +4,7 @@ plugins {
 }
 android {
     namespace = "com.example.watertracker"
-    compileSdk = 35
+    compileSdk = 36
     defaultConfig {
         applicationId = "com.example.watertracker"
         minSdk = 26
@@ -30,5 +30,5 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.4.1")
     implementation("androidx.camera:camera-view:1.4.1")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
-    implementation("androidx.health.connect:connect-client:1.0.0")
+    implementation("androidx.health.connect:connect-client:1.1.0")
 }
