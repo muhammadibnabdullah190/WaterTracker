@@ -18,6 +18,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.core.CameraSelector
@@ -55,6 +56,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val theme = getSharedPreferences("water_tracker", Context.MODE_PRIVATE).getString("theme", "system")
+        AppCompatDelegate.setDefaultNightMode(when (theme) { "dark" -> AppCompatDelegate.MODE_NIGHT_YES; "light" -> AppCompatDelegate.MODE_NIGHT_NO; else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM })
         super.onCreate(savedInstanceState)
         loadTodayTotal()
         buildUi()
