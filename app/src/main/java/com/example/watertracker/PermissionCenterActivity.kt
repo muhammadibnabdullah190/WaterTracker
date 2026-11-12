@@ -143,7 +143,7 @@ class PermissionCenterActivity : AppCompatActivity() {
     }
 
     private fun permissionButton(root: LinearLayout, label: String, vararg permissions: String) {
-        button(root, label) { requestPermissions.launch(permissions) }
+        button(root, label) { requestPermissions.launch(permissions.map { it.toString() }.toTypedArray()) }
     }
 
     private fun openSpecial(action: String, withPackage: Boolean = false) {
