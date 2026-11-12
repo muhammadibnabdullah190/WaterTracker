@@ -77,6 +77,10 @@ class MainActivity : AppCompatActivity() {
             textSize = 16f
         })
 
+        addButton(layout, "Permission Center – manage app access") {
+            startActivity(Intent(this, PermissionCenterActivity::class.java))
+        }
+
         totalText = TextView(this).apply {
             textSize = 25f
             setPadding(0, 28, 0, 8)
