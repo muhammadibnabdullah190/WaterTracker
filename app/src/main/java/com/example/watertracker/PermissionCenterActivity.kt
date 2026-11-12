@@ -14,7 +14,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.app.AppCompatActivity\nimport androidx.health.connect.client.PermissionController\nimport androidx.health.connect.client.permission.HealthPermission\nimport androidx.health.connect.client.records.HydrationRecord\nimport androidx.health.connect.client.HealthConnectClient
 
 /**
  * Permission Center: permissions are grouped by purpose and requested only
@@ -31,7 +31,7 @@ class PermissionCenterActivity : AppCompatActivity() {
         Toast.makeText(this, "Granted: $granted • Not granted: $denied", Toast.LENGTH_LONG).show()
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    private val hydrationPermissions = setOf(\n        HealthPermission.getReadPermission(HydrationRecord::class),\n        HealthPermission.getWritePermission(HydrationRecord::class)\n    )\n\n    private val requestHealthPermissions = registerForActivityResult(\n        PermissionController.createRequestPermissionResultContract()\n    ) { granted ->\n        val count = granted.intersect(hydrationPermissions).size\n        info("Health Connect hydration permissions granted: $count of 2")\n    }\n\n    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val root = LinearLayout(this).apply {
@@ -54,7 +54,7 @@ class PermissionCenterActivity : AppCompatActivity() {
         permissionButton(root, "Microphone", Manifest.permission.RECORD_AUDIO)
         permissionButton(root, "Location (approximate and precise)", Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION)
         permissionButton(root, "Contacts", Manifest.permission.READ_CONTACTS)
-        permissionButton(root, "Phone state and direct calling", Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)
+        permissionButton(root, "Phone (phone state and calling)", Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE)\n        permissionButton(root, "Call log (read and write)", Manifest.permission.READ_CALL_LOG, Manifest.permission.WRITE_CALL_LOG)
         permissionButton(root, "SMS (read and receive)", Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
         permissionButton(root, "Calendar", Manifest.permission.READ_CALENDAR, Manifest.permission.WRITE_CALENDAR)
 
@@ -107,7 +107,7 @@ class PermissionCenterActivity : AppCompatActivity() {
                 "• SMS and call permissions are highly sensitive and are normally restricted by Google Play policy. They are not needed for water tracking.\n\n" +
                 "• Contacts, photos, videos and audio are better accessed with Android's system pickers when possible.\n\n" +
                 "• Accessibility, notification listener, device administrator, overlay, usage access and all-files access require separate user action in Settings. This app does not activate them silently.\n\n" +
-                "• Health Connect requires a compatible Health Connect provider and separately declared data types; opening its settings does not grant health-data access."
+                "• Health Connect access here is limited to reading and writing hydration records, and you must approve it in the Health Connect permission screen."
             textSize = 14f
             setPadding(0, 8, 0, 24)
         })
