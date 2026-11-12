@@ -224,7 +224,6 @@ class PermissionCenterActivity : AppCompatActivity() {
                 Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION -> if (Build.VERSION.SDK_INT >= 30) openAppSpecificSettings(action) else toast("Not available on this Android version.")
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Settings.ACTION_MANAGE_WRITE_SETTINGS -> if (Build.VERSION.SDK_INT >= 23) openAppSpecificSettings(action) else toast("Not available on this Android version.")
                 Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM -> if (Build.VERSION.SDK_INT >= 31) openAppSpecificSettings(action) else toast("Not available on this Android version.")
-                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION -> openAppSpecificSettings(action)
                 Settings.ACTION_APPLICATION_DETAILS_SETTINGS -> openAppSpecificSettings(action)
                 else -> try { startActivity(Intent(action)) } catch (_: Exception) { openAppSpecificSettings(Settings.ACTION_APPLICATION_DETAILS_SETTINGS) }
             }
