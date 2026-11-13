@@ -23,6 +23,12 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HydrationRecord
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.request.AggregateRequest
+import androidx.health.connect.client.time.TimeRangeFilter
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.launch
@@ -30,6 +36,7 @@ import kotlinx.coroutines.launch
 class PermissionCenterActivity : AppCompatActivity() {
     private val readHydration = HealthPermission.getReadPermission(HydrationRecord::class)
     private val writeHydration = HealthPermission.getWritePermission(HydrationRecord::class)
+    private val readSteps = HealthPermission.getReadPermission(StepsRecord::class)
     private lateinit var page: LinearLayout
     private lateinit var healthStatus: TextView
     private val runtimeStatus = mutableMapOf<String, TextView>()
@@ -123,14 +130,16 @@ class PermissionCenterActivity : AppCompatActivity() {
                 }
             }
             2 -> {
-                heading("Health Connect – hydration only")
-                addText("Health Connect has its own approval screen. It will not appear in the normal Android app-permissions list. Read and Write are separate data permissions.")
+                heading("Health Connect – hydration and daily steps")
+                addText("Health Connect has its own approval screen. It will not appear in the normal Android app-permissions list. Each data type requires separate approval. All access is optional.")
                 healthStatus = addText("Checking Health Connect…")
                 healthCard("Read hydration", "Optional", "Allows Water Tracker to read hydration entries already saved in Health Connect. Deny by default if you only want manual tracking; it is not needed to add water in this app.", readHydration)
                 healthCard("Write hydration", "Optional", "Allows Water Tracker to save water entries you log to Health Connect. Deny by default unless you want your logged drinks shared with Health Connect.", writeHydration)
+                healthCard("Read daily steps", "Optional", "Displays the current day total from Health Connect. Read-only; the app does not create or modify step records. Deny by default unless you want activity context alongside hydration.", readSteps)
+                actionButton("Read today step total") { readTodaySteps() }
                 actionButton("Open Health Connect settings") { openHealthConnectSettings() }
                 actionButton("Refresh Health Connect status") { refreshHealth() }
-                addText("If the app is missing from Health Connect, update/install Health Connect, reopen this app, and request Read or Write here. Your Android version must support Health Connect.")
+                addText("If the app is missing from Health Connect, update/install Health Connect, reopen this app, and request only the data permissions you want.")
                 if (Build.VERSION.SDK_INT >= 29) permission("Physical activity", Manifest.permission.ACTIVITY_RECOGNITION, "Not required", "A water tracker can set reminders without step/activity tracking. Deny by default unless an activity-based feature is added.")
                 permission("Body sensors", Manifest.permission.BODY_SENSORS, "Not required", "Hydration logging does not require body-sensor readings. Deny by default.")
             }
@@ -258,13 +267,29 @@ class PermissionCenterActivity : AppCompatActivity() {
             try {
                 val client = HealthConnectClient.getOrCreate(this@PermissionCenterActivity)
                 grantedHealth = client.permissionController.getGrantedPermissions()
-                healthStatus.text = "Health Connect available • Read hydration: ${if (readHydration in grantedHealth) "Allowed" else "Not allowed"} • Write hydration: ${if (writeHydration in grantedHealth) "Allowed" else "Not allowed"}"
+                healthStatus.text = "Health Connect available • Read hydration: ${if (readHydration in grantedHealth) "Allowed" else "Not allowed"} • Write hydration: ${if (writeHydration in grantedHealth) "Allowed" else "Not allowed"} • Read steps: ${if (readSteps in grantedHealth) "Allowed" else "Not allowed"}"
             } catch (e: Exception) {
                 healthStatus.text = "Health Connect is installed, but access status could not be checked. Open Health Connect settings to review."
             }
         }
     }
 
+    private fun readTodaySteps() {
+        if (!healthAvailable) { toast("Health Connect is unavailable. Install or update it, then try again."); openHealthConnectSettings(); return }
+        lifecycleScope.launch {
+            try {
+                val client = HealthConnectClient.getOrCreate(this@PermissionCenterActivity)
+                val current = client.permissionController.getGrantedPermissions()
+                if (readSteps !in current) { toast("Grant Read daily steps access first."); healthRequest.launch(setOf(readSteps)); return@launch }
+                val zone = ZoneId.systemDefault()
+                val start = LocalDate.now(zone).atStartOfDay(zone).toInstant()
+                val result = client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(start, Instant.now())))
+                val total = result[StepsRecord.COUNT_TOTAL] ?: 0L
+                android.app.AlertDialog.Builder(this@PermissionCenterActivity).setTitle("Today's steps").setMessage(total.toString()).setPositiveButton("OK", null).show()
+            } catch (e: SecurityException) { toast("Step-count permission is not granted.") }
+              catch (e: Exception) { toast("Could not read today's steps from Health Connect.") }
+        }
+    }
     private fun refreshHealthStatus() = refreshHealth()
 
     private fun openHealthConnectSettings() {
