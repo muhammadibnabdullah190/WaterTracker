@@ -15,12 +15,12 @@ class PermissionsRationaleActivity : AppCompatActivity() {
             text = """
                 Water Tracker – Health Connect privacy information
 
-                Water Tracker requests access only to Hydration records.
+                Water Tracker requests access to Hydration records and, if you choose, read-only daily Steps records.
 
                 Read hydration: used to display hydration records already stored in Health Connect.
                 Write hydration: used to save water intake entries that you choose to log in Water Tracker.
 
-                Water Tracker does not need access to steps, heart rate, location, contacts, or other health data for hydration logging.
+                Step access is optional and used only to display the current day step total. Water Tracker does not write step records or access heart rate, location, contacts, or other health data.
 
                 You control these permissions in Health Connect and can revoke them at any time. Denying access does not prevent manual water logging in this app.
             """.trimIndent()
