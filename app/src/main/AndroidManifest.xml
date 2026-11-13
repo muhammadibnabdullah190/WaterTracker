@@ -39,6 +39,7 @@
 
     <!-- Health Connect hydration data permissions -->
     <uses-permission android:name="android.permission.health.READ_HYDRATION" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
     <uses-permission android:name="android.permission.health.WRITE_HYDRATION" />
 
     <application
