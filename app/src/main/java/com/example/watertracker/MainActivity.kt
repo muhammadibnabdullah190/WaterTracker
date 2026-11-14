@@ -612,8 +612,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (eyeCameraStarted || isFinishing || !hasPermission(Manifest.permission.CAMERA)) return
         eyeCameraStarted = true
         val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
             .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+            .enableTracking()
             .build()
         faceDetector = FaceDetection.getClient(options)
         val providerFuture = ProcessCameraProvider.getInstance(this)
@@ -640,28 +641,27 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             val left = face?.leftEyeOpenProbability
                             val right = face?.rightEyeOpenProbability
                             if (left != null && right != null) {
-                                // ML Kit probabilities vary with lighting, camera angle and glasses.
-                                // Accept a moderate score from both eyes, or a strong score from one eye.
-                                val averageOpen = (left + right) / 2f
-                                val eyesLookOpen = (left >= 0.35f && right >= 0.35f) ||
-                                    averageOpen >= 0.48f || maxOf(left, right) >= 0.70f
-                                if (eyesLookOpen) {
+                                // Use the classifier's probabilities directly. One clearly open eye
+                                // keeps Light; both clearly closed eyes switch to Dark immediately.
+                                val openThreshold = 0.25f
+                                val eitherEyeOpen = left >= openThreshold || right >= openThreshold
+                                val bothEyesClosed = left < openThreshold && right < openThreshold
+                                if (eitherEyeOpen) {
                                     eyeOpenFrames++
                                     eyeClosedFrames = 0
-                                    if (eyeOpenFrames >= 2) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(false) }
-                                } else {
+                                    if (eyeOpenFrames >= 1) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(false) }
+                                } else if (bothEyesClosed) {
                                     eyeClosedFrames++
                                     eyeOpenFrames = 0
-                                    if (eyeClosedFrames >= 4) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                                    if (eyeClosedFrames >= 1) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
                                 }
                             } else if (face == null) {
-                                // No face for several frames means the user is not in front of the display.
+                                // No face means the user is not in front of the display.
                                 eyeClosedFrames++
                                 eyeOpenFrames = 0
-                                if (eyeClosedFrames >= 8) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                                if (eyeClosedFrames >= 3) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
                             } else {
-                                // Unknown eye classification is not the same as closed eyes.
-                                // Keep the last selected theme instead of incorrectly switching to dark.
+                                // Eye probabilities unavailable: preserve the current theme.
                                 eyeOpenFrames = 0
                                 eyeClosedFrames = 0
                             }
