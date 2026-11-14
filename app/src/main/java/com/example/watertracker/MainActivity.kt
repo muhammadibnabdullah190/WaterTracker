@@ -169,50 +169,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             else locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
-        addSectionTitle(layout, "Accessibility & display")
-        addButton(layout, "Color correction / color filters") {
-            toast("Enable color correction in Android accessibility settings.")
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-        addSectionTitle(layout, "Font size")
-        addButton(layout, "Smaller font") { changeFontSize(-0.1f) }
-        addButton(layout, "Larger font") { changeFontSize(0.1f) }
-        addButton(layout, "Reset font size") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
-        addSectionTitle(layout, "Font style")
-        addButton(layout, "Default font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
-        addButton(layout, "Serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
-        addButton(layout, "Sans-serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
-        addButton(layout, "Toggle bold text") { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
-        addSectionTitle(layout, "Screen orientation")
-        addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-        addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-        addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-        addSectionTitle(layout, "Picture-in-Picture (PiP)")
-        layout.addView(Switch(this).apply {
-            text = "Enable Picture-in-Picture"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("pip_enabled", enabled).apply()
-                toast(if (enabled) "PiP enabled in Water Tracker. Also allow it in Android settings below." else "PiP disabled in Water Tracker.")
-            }
-        })
-        addButton(layout, "Open Android Picture-in-Picture settings") { openPipSystemSettings() }
-        layout.addView(TextView(this).apply {
-            text = "Why PiP is off by default: a floating window can remain visible over other apps and may expose your water progress or distract you. Enable it only when you want the tracker to stay visible. PiP also needs to be allowed by Android for this app."
-            textSize = 13f
-            setPadding(0, 8, 0, 12)
-        })
-        addSectionTitle(layout, "Screen awake setting")
-        layout.addView(Switch(this).apply {
-            text = "Keep screen awake while Water Tracker is visible"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
-                applyKeepScreenAwake()
-                toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
-            }
-        })
-        addSectionTitle(layout, "Adaptive theme modes")
+        addSectionTitle(layout, "Theme Settings")
         addButton(layout, "Eye-Based View Theme – eyes open: Light; closed / not detected: Dark") {
             if (hasPermission(Manifest.permission.CAMERA)) saveThemeMode("eye_view")
             else eyeCameraPermission.launch(Manifest.permission.CAMERA)
@@ -235,6 +192,55 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             text = "Selected theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}. Room-light and motion modes use device sensors. Weather mode asks you to select the current condition to avoid background data use."
             textSize = 13f
             setPadding(0, 8, 0, 12)
+        })
+        addSectionTitle(layout, "Display & Accessibility")
+        addButton(layout, "Color correction / color filters") {
+            toast("Enable color correction in Android accessibility settings.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        addSectionTitle(layout, "Font size")
+        addButton(layout, "Smaller font") { changeFontSize(-0.1f) }
+        addButton(layout, "Larger font") { changeFontSize(0.1f) }
+        addButton(layout, "Reset font size") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
+        addSectionTitle(layout, "Font style")
+        addButton(layout, "Default font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
+        addButton(layout, "Serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
+        addButton(layout, "Sans-serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
+        addButton(layout, "Toggle bold text") { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
+        addSectionTitle(layout, "Screen orientation")
+        addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(layout, "Picture-in-Picture (PiP)")
+        layout.addView(TextView(this).apply {
+            text = "When enabled and allowed by Android, Water Tracker opens as a small floating window when you leave the app. It shows your daily total and lets you add water."
+            textSize = 13f
+            setPadding(0, 4, 0, 8)
+        })
+        layout.addView(Switch(this).apply {
+            text = "Enable Picture-in-Picture"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("pip_enabled", enabled).apply()
+                updatePipParams()
+                toast(if (enabled) "PiP enabled. Allow it in Android settings too." else "PiP disabled.")
+            }
+        })
+        addButton(layout, "Open Android Picture-in-Picture settings") { openPipSystemSettings() }
+        layout.addView(TextView(this).apply {
+            text = "Privacy reason: PiP is off by default because a floating window can expose your water progress over other apps and may distract you. Turn it on only when you want the tracker to stay visible. Android must also allow PiP for this app."
+            textSize = 13f
+            setPadding(0, 8, 0, 12)
+        })
+        addSectionTitle(layout, "Screen awake setting")
+        layout.addView(Switch(this).apply {
+            text = "Keep screen awake while Water Tracker is visible"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
+                applyKeepScreenAwake()
+                toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
+            }
         })
         addSectionTitle(layout, "App updates")
         layout.addView(Switch(this).apply { text = "Automatic updates"; isChecked = false; isEnabled = false })
@@ -525,6 +531,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
+    private fun updatePipParams() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
+        val builder = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setAutoEnterEnabled(enabled && isPipAllowedInSystemSettings())
+        runCatching { setPictureInPictureParams(builder.build()) }
+    }
+
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
         val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
@@ -534,13 +548,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         try {
-            val params = PictureInPictureParams.Builder()
-                .setAspectRatio(Rational(16, 9))
-                .build()
-            enterPictureInPictureMode(params)
-        } catch (_: Exception) {
-            toast("Android could not start Picture-in-Picture. Check the system PiP setting.")
-        }
+            updatePipParams()
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
+        } catch (_: Exception) { toast("Android could not start Picture-in-Picture. Check the system PiP setting.") }
     }
 
     override fun onPictureInPictureModeChanged(
@@ -712,6 +722,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         super.onResume()
         applyKeepScreenAwake()
         applyThemePreference()
+        updatePipParams()
         registerThemeSensor()
         if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view" && hasPermission(Manifest.permission.CAMERA)) {
             startEyeThemeCamera()
