@@ -2,10 +2,13 @@ package com.example.watertracker
 
 import android.Manifest
 import android.app.Activity
+import android.app.AppOpsManager
+import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.provider.Settings
 import android.view.WindowManager
 import android.graphics.Typeface
@@ -21,6 +24,8 @@ import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
 import android.os.Bundle
+import android.os.Build
+import android.util.Rational
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.widget.Button
@@ -182,6 +187,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(layout, "Picture-in-Picture (PiP)")
+        layout.addView(Switch(this).apply {
+            text = "Enable Picture-in-Picture"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("pip_enabled", enabled).apply()
+                toast(if (enabled) "PiP enabled in Water Tracker. Also allow it in Android settings below." else "PiP disabled in Water Tracker.")
+            }
+        })
+        addButton(layout, "Open Android Picture-in-Picture settings") { openPipSystemSettings() }
+        layout.addView(TextView(this).apply {
+            text = "Why PiP is off by default: a floating window can remain visible over other apps and may expose your water progress or distract you. Enable it only when you want the tracker to stay visible. PiP also needs to be allowed by Android for this app."
+            textSize = 13f
+            setPadding(0, 8, 0, 12)
+        })
         addSectionTitle(layout, "Screen awake setting")
         layout.addView(Switch(this).apply {
             text = "Keep screen awake while Water Tracker is visible"
@@ -475,6 +495,94 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 toast("Unable to start camera: ${e.localizedMessage}")
             }
         }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun isPipAllowedInSystemSettings(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_PICTURE_IN_PICTURE, android.os.Process.myUid(), packageName)
+        return mode != AppOpsManager.MODE_IGNORED && mode != AppOpsManager.MODE_ERRORED
+    }
+
+    private fun openPipSystemSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            toast("Picture-in-Picture requires Android 8.0 or later.")
+            return
+        }
+        val intent = Intent(Settings.ACTION_PICTURE_IN_PICTURE_SETTINGS).apply {
+            data = Uri.parse("package:$packageName")
+        }
+        try {
+            startActivity(intent)
+        } catch (_: Exception) {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+            toast("Open Picture-in-Picture under the app's Special app access settings.")
+        }
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
+        if (!enabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        if (!isPipAllowedInSystemSettings()) {
+            toast("Allow Picture-in-Picture for Water Tracker in Android settings first.")
+            return
+        }
+        try {
+            val params = PictureInPictureParams.Builder()
+                .setAspectRatio(Rational(16, 9))
+                .build()
+            enterPictureInPictureMode(params)
+        } catch (_: Exception) {
+            toast("Android could not start Picture-in-Picture. Check the system PiP setting.")
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(
+        isInPictureInPictureMode: Boolean,
+        newConfig: Configuration
+    ) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        if (isInPictureInPictureMode) {
+            stopEyeThemeCamera()
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view") {
+                applyEyeTheme(true)
+            }
+            showPipContent()
+        } else {
+            buildUi()
+        }
+    }
+
+    private fun showPipContent() {
+        val compact = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 18, 24, 18)
+        }
+        compact.addView(TextView(this).apply {
+            text = "💧 Water Tracker"
+            textSize = 18f
+        })
+        compact.addView(TextView(this).apply {
+            text = "Today: $totalMl ml / $dailyGoalMl ml"
+            textSize = 16f
+        })
+        compact.addView(TextView(this).apply {
+            val percent = ((totalMl * 100) / dailyGoalMl).coerceAtMost(100)
+            text = "$percent% of daily goal"
+            textSize = 14f
+        })
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        actions.addView(Button(this).apply {
+            text = "+250 ml"
+            setOnClickListener { addWater(250); showPipContent() }
+        })
+        actions.addView(Button(this).apply {
+            text = "+500 ml"
+            setOnClickListener { addWater(500); showPipContent() }
+        })
+        compact.addView(actions)
+        setContentView(compact)
     }
 
     private fun applyEyeTheme(dark: Boolean) {
