@@ -48,6 +48,7 @@
         android:theme="@style/AppTheme"
         android:supportsRtl="true">
 
+        <receiver android:name=".SleepThemeReceiver" android:enabled="true" android:exported="false" />
         <activity android:name=".PermissionCenterActivity" android:exported="false" />
 
         <!-- Health Connect requires a visible privacy/rationale activity before it lists
