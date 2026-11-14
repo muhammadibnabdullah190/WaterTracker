@@ -639,19 +639,36 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
                             val left = face?.leftEyeOpenProbability
                             val right = face?.rightEyeOpenProbability
-                            if (left != null && right != null && left >= 0.60f && right >= 0.60f) {
-                                eyeOpenFrames++
-                                eyeClosedFrames = 0
-                                if (eyeOpenFrames >= 3) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(false) }
-                            } else {
+                            if (left != null && right != null) {
+                                // ML Kit probabilities vary with lighting, camera angle and glasses.
+                                // Accept a moderate score from both eyes, or a strong score from one eye.
+                                val averageOpen = (left + right) / 2f
+                                val eyesLookOpen = (left >= 0.35f && right >= 0.35f) ||
+                                    averageOpen >= 0.48f || maxOf(left, right) >= 0.70f
+                                if (eyesLookOpen) {
+                                    eyeOpenFrames++
+                                    eyeClosedFrames = 0
+                                    if (eyeOpenFrames >= 2) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(false) }
+                                } else {
+                                    eyeClosedFrames++
+                                    eyeOpenFrames = 0
+                                    if (eyeClosedFrames >= 4) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                                }
+                            } else if (face == null) {
+                                // No face for several frames means the user is not in front of the display.
                                 eyeClosedFrames++
                                 eyeOpenFrames = 0
-                                if (eyeClosedFrames >= 2) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                                if (eyeClosedFrames >= 8) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                            } else {
+                                // Unknown eye classification is not the same as closed eyes.
+                                // Keep the last selected theme instead of incorrectly switching to dark.
+                                eyeOpenFrames = 0
+                                eyeClosedFrames = 0
                             }
                         }.addOnFailureListener(cameraExecutor) {
+                            // A temporary detector failure must not be interpreted as closed eyes.
                             eyeOpenFrames = 0
-                            eyeClosedFrames++
-                            if (eyeClosedFrames >= 2) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                            eyeClosedFrames = 0
                         }.addOnCompleteListener { proxy.close() }
                     }
                 }
