@@ -298,7 +298,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("last_room_dark", darkRoom).apply()
             applyThemePreference()
         } else if (mode == "motion" && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+            val now = System.currentTimeMillis()
+            if (now - lastMotionThemeUpdate > 1500) {
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+                val magnitude = kotlin.math.sqrt(x * x + y * y + z * z)
+                val movementDetected = kotlin.math.abs(magnitude - SensorManager.GRAVITY_EARTH) > 1.0f
+                if (movementDetected) {
+                    AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+                }
+                lastMotionThemeUpdate = now
+            }
         }
     }
 
@@ -308,6 +319,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val mode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") ?: ""
         val type = when (mode) {
             "room_light" -> Sensor.TYPE_LIGHT
+            "motion" -> Sensor.TYPE_ACCELEROMETER
             else -> return
         }
         val sensor = sensorManager.getDefaultSensor(type)
