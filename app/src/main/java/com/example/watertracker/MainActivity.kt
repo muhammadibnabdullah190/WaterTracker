@@ -536,6 +536,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             try {
                 // The front camera is used only while this Activity is foregrounded.
                 provider.unbindAll()
+                cameraStarted = false
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
                 applyEyeTheme(true)
                 toast("Eye-Based View Theme is active. Detection runs on-device; images are not saved or uploaded.")
