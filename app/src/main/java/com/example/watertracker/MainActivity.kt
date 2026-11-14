@@ -15,6 +15,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.app.AlertDialog
+import android.app.TimePickerDialog
 import java.util.Calendar
 import android.location.Location
 import android.location.LocationManager
@@ -170,16 +171,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addSectionTitle(layout, "Adaptive theme modes")
         addButton(layout, "Room light – use ambient light sensor") { saveThemeMode("room_light") }
         addButton(layout, "Weather based – choose current weather") { showWeatherThemePicker() }
-        addButton(layout, "Time based – local clock schedule") { saveThemeMode("time") }
+        addButton(layout, "Time based – configure your theme schedule") { showTimeThemeOptions() }
         addButton(layout, "Day–night based – local day/night cycle") { saveThemeMode("day_night") }
         addButton(layout, "Choice preference – select Light or Dark") { showChoiceThemePicker() }
         addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }
-        addButton(layout, "Meditation based – calm theme") {
-            val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
-            val active = !p.getBoolean("meditation_active", false)
-            p.edit().putBoolean("meditation_active", active).putString("theme", "meditation").apply()
+        addButton(layout, "Meditation based – calm dark theme") {
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                .putBoolean("meditation_active", true).putString("theme", "meditation").apply()
             applyThemePreference()
-            toast(if (active) "Meditation theme enabled." else "Meditation theme paused.")
+            toast("Calm dark meditation theme enabled.")
             recreate()
         }
         val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
@@ -202,12 +202,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val dark = when (mode) {
             "dark", "choice_dark" -> true
             "light", "choice_light" -> false
-            "meditation" -> p.getBoolean("meditation_active", false)
-            "time" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 7..18
+            "meditation" -> true
+            "time" -> {
+                if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
+                else {
+                    val now = Calendar.getInstance()
+                    val current = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
+                    val start = p.getInt("time_dark_start", 19 * 60)
+                    val end = p.getInt("time_dark_end", 7 * 60)
+                    if (start == end) p.getBoolean("time_all_day_dark", false)
+                    else if (start < end) current !in start until end
+                    else current >= start || current < end
+                }
+            }
             "day_night" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 6..17
             "weather" -> p.getString("weather_condition", "clear") in setOf("cloudy", "rain", "storm", "snow")
             "room_light" -> p.getBoolean("last_room_dark", false)
-            "motion" -> p.getBoolean("last_motion_still", false)
+            "motion" -> false
             else -> {
                 AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
                 return
@@ -221,6 +232,46 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         applyThemePreference()
         recreate()
     }
+
+    private fun showTimeThemeOptions() {
+        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        AlertDialog.Builder(this).setTitle("Time-based theme")
+            .setItems(arrayOf("Light theme for 24 hours", "Dark theme for 24 hours", "Set Light and Dark time periods")) { _, choice ->
+                when (choice) {
+                    0 -> {
+                        p.edit().putString("theme", "time").putBoolean("time_all_day", true)
+                            .putBoolean("time_all_day_dark", false).apply()
+                        applyThemePreference(); recreate()
+                    }
+                    1 -> {
+                        p.edit().putString("theme", "time").putBoolean("time_all_day", true)
+                            .putBoolean("time_all_day_dark", true).apply()
+                        applyThemePreference(); recreate()
+                    }
+                    2 -> configureTimeRange()
+                }
+            }.show()
+    }
+
+    private fun configureTimeRange() {
+        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val startDefault = p.getInt("time_dark_start", 19 * 60)
+        val endDefault = p.getInt("time_dark_end", 7 * 60)
+        TimePickerDialog(this, { _, startHour, startMinute ->
+            val start = startHour * 60 + startMinute
+            TimePickerDialog(this, { _, endHour, endMinute ->
+                val end = endHour * 60 + endMinute
+                p.edit().putString("theme", "time").putBoolean("time_all_day", false)
+                    .putInt("time_dark_start", start).putInt("time_dark_end", end).apply()
+                applyThemePreference()
+                toast("Schedule saved: Dark ${formatClock(start)}–${formatClock(end)}; Light for the remaining time.")
+                recreate()
+            }, endDefault / 60, endDefault % 60, true).setTitle("Choose when Dark theme ends").show()
+        }, startDefault / 60, startDefault % 60, true).setTitle("Choose when Dark theme starts").show()
+    }
+
+    private fun formatClock(minutes: Int): String =
+        String.format(Locale.getDefault(), "%02d:%02d", minutes / 60, minutes % 60)
 
     private fun showChoiceThemePicker() {
         AlertDialog.Builder(this).setTitle("Choice preference")
@@ -247,15 +298,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("last_room_dark", darkRoom).apply()
             applyThemePreference()
         } else if (mode == "motion" && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            val now = System.currentTimeMillis()
-            if (now - lastMotionThemeUpdate > 2500) {
-                val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
-                val magnitude = kotlin.math.sqrt(x*x + y*y + z*z)
-                val still = kotlin.math.abs(magnitude - SensorManager.GRAVITY_EARTH) < 1.2f
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("last_motion_still", still).apply()
-                lastMotionThemeUpdate = now
-                applyThemePreference()
-            }
+            AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
         }
     }
 
@@ -265,7 +308,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val mode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") ?: ""
         val type = when (mode) {
             "room_light" -> Sensor.TYPE_LIGHT
-            "motion" -> Sensor.TYPE_ACCELEROMETER
             else -> return
         }
         val sensor = sensorManager.getDefaultSensor(type)
