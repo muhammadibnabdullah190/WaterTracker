@@ -5,6 +5,11 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ActivityInfo
+import android.provider.Settings
+import android.view.WindowManager
+import android.graphics.Typeface
+import android.widget.Switch
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -59,6 +64,7 @@ class MainActivity : AppCompatActivity() {
         val theme = getSharedPreferences("water_tracker", Context.MODE_PRIVATE).getString("theme", "system")
         AppCompatDelegate.setDefaultNightMode(when (theme) { "dark" -> AppCompatDelegate.MODE_NIGHT_YES; "light" -> AppCompatDelegate.MODE_NIGHT_NO; else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM })
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         loadTodayTotal()
         buildUi()
     }
@@ -135,6 +141,29 @@ class MainActivity : AppCompatActivity() {
             else locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
+        addSectionTitle(layout, "Accessibility & display")
+        addButton(layout, "Color correction / color filters") {
+            toast("Enable color correction in Android accessibility settings.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        addSectionTitle(layout, "Font size")
+        addButton(layout, "Smaller font") { changeFontSize(-0.1f) }
+        addButton(layout, "Larger font") { changeFontSize(0.1f) }
+        addButton(layout, "Reset font size") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
+        addSectionTitle(layout, "Font style")
+        addButton(layout, "Default font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
+        addButton(layout, "Serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
+        addButton(layout, "Sans-serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
+        addButton(layout, "Toggle bold text") { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
+        addSectionTitle(layout, "Screen orientation")
+        addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(layout, "App updates")
+        layout.addView(Switch(this).apply { text = "Automatic updates"; isChecked = false; isEnabled = false })
+        layout.addView(TextView(this).apply { text = "Automatic updates are disabled. Review changes and permissions consciously, then install updates manually when you choose. This preserves control over app changes and avoids unexpected mobile-data use."; textSize = 13f; setPadding(0, 8, 0, 12) })
+        layout.addView(TextView(this).apply { text = "The screen stays awake while Water Tracker is visible. Normal screen timeout resumes when you leave the app."; textSize = 13f })
+        applyDisplayPreferences(layout)
         setContentView(ScrollView(this).apply { addView(layout) })
     }
 
@@ -272,6 +301,27 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun changeFontSize(delta: Float) {
+        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val next = (p.getFloat("font_scale", 1f) + delta).coerceIn(0.8f, 1.6f)
+        p.edit().putFloat("font_scale", next).apply()
+        recreate()
+    }
+
+    private fun applyDisplayPreferences(root: android.view.View) {
+        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val scale = p.getFloat("font_scale", 1f)
+        val family = when (p.getString("font_style", "default")) { "serif" -> Typeface.SERIF; "sans" -> Typeface.SANS_SERIF; else -> Typeface.DEFAULT }
+        val style = if (p.getBoolean("bold_text", false)) Typeface.BOLD else Typeface.NORMAL
+        fun visit(v: android.view.View) {
+            if (v is TextView) { v.textSize = v.textSize / resources.displayMetrics.scaledDensity * scale; v.typeface = Typeface.create(family, style) }
+            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) visit(v.getChildAt(i))
+        }
+        visit(root)
+    }
+
+    override fun onResume() { super.onResume(); window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    override fun onPause() { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); super.onPause() }
     private fun toast(message: String) =
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
