@@ -10,6 +10,12 @@ import android.provider.Settings
 import android.view.WindowManager
 import android.graphics.Typeface
 import android.widget.Switch
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.app.AlertDialog
+import java.util.Calendar
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -37,7 +43,7 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SensorEventListener {
     private var totalMl = 0
     private val dailyGoalMl = 2000
     private lateinit var totalText: TextView
@@ -46,6 +52,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cameraPreview: PreviewView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
+    private lateinit var sensorManager: SensorManager
+    private var lastMotionThemeUpdate = 0L
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startCamera() else toast("Camera permission was not granted.")
@@ -61,9 +69,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val theme = getSharedPreferences("water_tracker", Context.MODE_PRIVATE).getString("theme", "system")
-        AppCompatDelegate.setDefaultNightMode(when (theme) { "dark" -> AppCompatDelegate.MODE_NIGHT_YES; "light" -> AppCompatDelegate.MODE_NIGHT_NO; else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM })
+        applyThemePreference()
         super.onCreate(savedInstanceState)
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         loadTodayTotal()
         buildUi()
@@ -159,12 +167,113 @@ class MainActivity : AppCompatActivity() {
         addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(layout, "Adaptive theme modes")
+        addButton(layout, "Room light – use ambient light sensor") { saveThemeMode("room_light") }
+        addButton(layout, "Weather based – choose current weather") { showWeatherThemePicker() }
+        addButton(layout, "Time based – local clock schedule") { saveThemeMode("time") }
+        addButton(layout, "Day–night based – local day/night cycle") { saveThemeMode("day_night") }
+        addButton(layout, "Choice preference – select Light or Dark") { showChoiceThemePicker() }
+        addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }
+        addButton(layout, "Meditation based – calm theme") {
+            val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            val active = !p.getBoolean("meditation_active", false)
+            p.edit().putBoolean("meditation_active", active).putString("theme", "meditation").apply()
+            applyThemePreference()
+            toast(if (active) "Meditation theme enabled." else "Meditation theme paused.")
+            recreate()
+        }
+        val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
+        layout.addView(TextView(this).apply {
+            text = "Selected theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}. Room-light and motion modes use device sensors. Weather mode asks you to select the current condition to avoid background data use."
+            textSize = 13f
+            setPadding(0, 8, 0, 12)
+        })
         addSectionTitle(layout, "App updates")
         layout.addView(Switch(this).apply { text = "Automatic updates"; isChecked = false; isEnabled = false })
         layout.addView(TextView(this).apply { text = "Automatic updates are disabled. Review changes and permissions consciously, then install updates manually when you choose. This preserves control over app changes and avoids unexpected mobile-data use."; textSize = 13f; setPadding(0, 8, 0, 12) })
         layout.addView(TextView(this).apply { text = "The screen stays awake while Water Tracker is visible. Normal screen timeout resumes when you leave the app."; textSize = 13f })
         applyDisplayPreferences(layout)
         setContentView(ScrollView(this).apply { addView(layout) })
+    }
+
+    private fun applyThemePreference() {
+        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val mode = p.getString("theme", "system") ?: "system"
+        val dark = when (mode) {
+            "dark", "choice_dark" -> true
+            "light", "choice_light" -> false
+            "meditation" -> p.getBoolean("meditation_active", false)
+            "time" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 7..18
+            "day_night" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 6..17
+            "weather" -> p.getString("weather_condition", "clear") in setOf("cloudy", "rain", "storm", "snow")
+            "room_light" -> p.getBoolean("last_room_dark", false)
+            "motion" -> p.getBoolean("last_motion_still", false)
+            else -> {
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+                return
+            }
+        }
+        AppCompatDelegate.setDefaultNightMode(if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+    }
+
+    private fun saveThemeMode(mode: String) {
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("theme", mode).apply()
+        applyThemePreference()
+        recreate()
+    }
+
+    private fun showChoiceThemePicker() {
+        AlertDialog.Builder(this).setTitle("Choice preference")
+            .setItems(arrayOf("Light", "Dark")) { _, which -> saveThemeMode(if (which == 0) "choice_light" else "choice_dark") }
+            .show()
+    }
+
+    private fun showWeatherThemePicker() {
+        AlertDialog.Builder(this).setTitle("Select current weather")
+            .setMessage("Choose the current condition manually. This avoids automatic weather requests and mobile-data use.")
+            .setItems(arrayOf("Sunny / clear", "Cloudy", "Rainy", "Stormy", "Snowy")) { _, which ->
+                val condition = arrayOf("clear", "cloudy", "rain", "storm", "snow")[which]
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                    .putString("weather_condition", condition).putString("theme", "weather").apply()
+                applyThemePreference()
+                recreate()
+            }.show()
+    }
+
+    override fun onSensorChanged(event: SensorEvent) {
+        val mode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") ?: ""
+        if (mode == "room_light" && event.sensor.type == Sensor.TYPE_LIGHT) {
+            val darkRoom = (event.values.firstOrNull() ?: 0f) < 40f
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("last_room_dark", darkRoom).apply()
+            applyThemePreference()
+        } else if (mode == "motion" && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
+            val now = System.currentTimeMillis()
+            if (now - lastMotionThemeUpdate > 2500) {
+                val x = event.values[0]; val y = event.values[1]; val z = event.values[2]
+                val magnitude = kotlin.math.sqrt(x*x + y*y + z*z)
+                val still = kotlin.math.abs(magnitude - SensorManager.GRAVITY_EARTH) < 1.2f
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("last_motion_still", still).apply()
+                lastMotionThemeUpdate = now
+                applyThemePreference()
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+    private fun registerThemeSensor() {
+        val mode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") ?: ""
+        val type = when (mode) {
+            "room_light" -> Sensor.TYPE_LIGHT
+            "motion" -> Sensor.TYPE_ACCELEROMETER
+            else -> return
+        }
+        val sensor = sensorManager.getDefaultSensor(type)
+        if (sensor == null) {
+            toast(if (type == Sensor.TYPE_LIGHT) "Ambient light sensor is unavailable on this device." else "Motion sensor is unavailable on this device.")
+            return
+        }
+        sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
     }
 
     private fun addSectionTitle(parent: LinearLayout, title: String) {
@@ -320,8 +429,17 @@ class MainActivity : AppCompatActivity() {
         visit(root)
     }
 
-    override fun onResume() { super.onResume(); window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
-    override fun onPause() { window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); super.onPause() }
+    override fun onResume() {
+        super.onResume()
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyThemePreference()
+        registerThemeSensor()
+    }
+    override fun onPause() {
+        sensorManager.unregisterListener(this)
+        window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        super.onPause()
+    }
     private fun toast(message: String) =
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
 
