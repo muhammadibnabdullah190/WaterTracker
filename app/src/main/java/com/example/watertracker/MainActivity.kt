@@ -5,6 +5,8 @@ import android.app.Activity
 import android.app.AppOpsManager
 import android.app.PictureInPictureParams
 import android.content.Context
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ActivityInfo
@@ -43,9 +45,6 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
-import com.google.mlkit.vision.face.FaceDetection
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.common.InputImage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -61,23 +60,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var cameraPreview: PreviewView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
-    private var eyeCameraStarted = false
-    private var eyeCameraProvider: ProcessCameraProvider? = null
-    private var eyeAnalysis: ImageAnalysis? = null
-    private var faceDetector: FaceDetector? = null
-    @Volatile private var eyeOpenFrames = 0
-    @Volatile private var eyeClosedFrames = 0
-    @Volatile private var lastEyeThemeDark: Boolean? = null
     private lateinit var sensorManager: SensorManager
     private var lastMotionThemeUpdate = 0L
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startCamera() else toast("Camera permission was not granted.")
     }
-    private val eyeCameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) { saveThemeMode("eye_view"); startEyeThemeCamera() }
-        else toast("Camera permission is needed for Eye-Based View Theme. Dark theme remains active.")
+    private val sleepActivityPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) enableSleepActivityTheme()
+        else toast("Physical Activity permission is required for Sleep Activity Theme. Your current theme is unchanged.")
     }
+    private val sleepThemeChangeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "sleep_activity") {
+                applyThemePreference()
+            }
+        }
+    }
+    private var sleepThemeReceiverRegistered = false
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startVoiceInput() else toast("Microphone permission was not granted.")
     }
@@ -170,10 +170,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
         addSectionTitle(layout, "Theme Settings")
-        addButton(layout, "Eye-Based View Theme – eyes open: Light; closed / not detected: Dark") {
-            if (hasPermission(Manifest.permission.CAMERA)) saveThemeMode("eye_view")
-            else eyeCameraPermission.launch(Manifest.permission.CAMERA)
+        addButton(layout, "Sleep Activity Sensor Theme – Awake: Light; Asleep: Dark") {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+                toast("Sleep Activity Theme requires Android 10 or later.")
+            } else if (hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
+                enableSleepActivityTheme()
+            } else {
+                sleepActivityPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
         }
+        layout.addView(TextView(this).apply {
+            text = "Sleep confidence thresholds: 0–20 = Awake / Light; 80–100 = Asleep / Dark; 21–79 = retain the previous theme. Uses device motion and ambient-light sensors, not the camera. Updates are periodic and may take about 10 minutes to arrive."
+            textSize = 13f
+            setPadding(0, 4, 0, 12)
+        })
         addButton(layout, "Room light – use ambient light sensor") { saveThemeMode("room_light") }
         addButton(layout, "Weather based – choose current weather") { showWeatherThemePicker() }
         addButton(layout, "Time based – configure your theme schedule") { showTimeThemeOptions() }
@@ -258,10 +268,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             "light", "choice_light" -> false
             "meditation" -> true
             "viewing" -> false
-            // Start in Light while the user is in the app. Eye analysis changes
-            // to Dark only after both eyes are confidently detected as closed,
-            // or after no face is detected for several consecutive frames.
-            "eye_view" -> false
+            // Sleep API confidence uses 0–20 for Awake and 80–100 for Asleep.
+            // The 21–79 middle band retains the last decided theme.
+            "sleep_activity" -> p.getBoolean("sleep_theme_dark", false)
+            "eye_view" -> false // Legacy setting from older camera-based builds.
             "time" -> {
                 if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
                 else {
@@ -562,10 +572,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
-            stopEyeThemeCamera()
-            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view") {
-                applyEyeTheme(true)
-            }
             showPipContent()
         } else {
             buildUi()
@@ -603,108 +609,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         setContentView(compact)
     }
 
-    private fun applyEyeTheme(dark: Boolean) {
-        if (lastEyeThemeDark == dark) return
-        lastEyeThemeDark = dark
-        AppCompatDelegate.setDefaultNightMode(
-            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
-        )
-    }
-
-    private fun startEyeThemeCamera() {
-        if (eyeCameraStarted || isFinishing || !hasPermission(Manifest.permission.CAMERA)) return
-        eyeCameraStarted = true
-        val options = FaceDetectorOptions.Builder()
-            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_ACCURATE)
-            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
-            .enableTracking()
-            .build()
-        faceDetector = FaceDetection.getClient(options)
-        val providerFuture = ProcessCameraProvider.getInstance(this)
-        providerFuture.addListener({
-            if (!eyeCameraStarted || isFinishing) return@addListener
-            val provider = providerFuture.get()
-            eyeCameraProvider = provider
-            val analysis = ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-            eyeAnalysis = analysis
-            analysis.setAnalyzer(cameraExecutor) { proxy ->
-                val mediaImage = proxy.image
-                if (mediaImage == null) {
-                    proxy.close()
-                } else {
-                    val input = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
-                    val task = faceDetector?.process(input)
-                    if (task == null) {
-                        proxy.close()
-                    } else {
-                        task.addOnSuccessListener(cameraExecutor) { faces ->
-                            val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
-                            val left = face?.leftEyeOpenProbability
-                            val right = face?.rightEyeOpenProbability
-                            if (left != null && right != null) {
-                                // Use the classifier's probabilities directly. One clearly open eye
-                                // keeps Light; both clearly closed eyes switch to Dark immediately.
-                                // ML Kit probabilities can be conservative on front cameras.
-                                // Ambiguous readings retain the current theme.
-                                val openThreshold = 0.18f
-                                val closedThreshold = 0.10f
-                                val eitherEyeOpen = left >= openThreshold || right >= openThreshold
-                                val bothEyesClosed = left <= closedThreshold && right <= closedThreshold
-                                if (eitherEyeOpen) {
-                                    eyeOpenFrames++
-                                    eyeClosedFrames = 0
-                                    if (eyeOpenFrames >= 1) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(false) }
-                                } else if (bothEyesClosed) {
-                                    eyeClosedFrames++
-                                    eyeOpenFrames = 0
-                                    if (eyeClosedFrames >= 1) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
-                                }
-                            } else if (face == null) {
-                                // No face means the user is not in front of the display.
-                                eyeClosedFrames++
-                                eyeOpenFrames = 0
-                                if (eyeClosedFrames >= 3) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
-                            } else {
-                                // Eye probabilities unavailable: preserve the current theme.
-                                eyeOpenFrames = 0
-                                eyeClosedFrames = 0
-                            }
-                        }.addOnFailureListener(cameraExecutor) {
-                            // A temporary detector failure must not be interpreted as closed eyes.
-                            eyeOpenFrames = 0
-                            eyeClosedFrames = 0
-                        }.addOnCompleteListener { proxy.close() }
-                    }
-                }
-            }
-            try {
-                // The front camera is used only while this Activity is foregrounded.
-                provider.unbindAll()
-                cameraStarted = false
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
-                // Do not force Dark when the camera starts. Keep Light until
-                // closed eyes or absence of a face is actually detected.
-                applyEyeTheme(false)
-                toast("Eye-Based View Theme is active. Keep your face visible to the front camera. Detection runs on-device; images are not saved or uploaded.")
-            } catch (e: Exception) {
-                eyeCameraStarted = false
-                applyEyeTheme(false)
-                toast("Unable to start eye detection. Light theme remains active; check Camera permission and try again.")
-            }
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun stopEyeThemeCamera() {
-        eyeCameraStarted = false
-        eyeCameraProvider?.let { provider -> eyeAnalysis?.let { provider.unbind(it) } }
-        eyeAnalysis = null
-        eyeCameraProvider = null
-        faceDetector?.close()
-        faceDetector = null
-        eyeOpenFrames = 0
-        eyeClosedFrames = 0
+    private fun enableSleepActivityTheme() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+            .putString("theme", "sleep_activity")
+            .putBoolean("sleep_theme_enabled", true)
+            .putInt("sleep_awake_threshold", 20)
+            .putInt("sleep_asleep_threshold", 80)
+            .apply()
+        applyThemePreference()
+        SleepThemeManager.subscribe(this)
+            .addOnSuccessListener { toast("Sleep Activity Theme enabled. Awake ≤20: Light; Asleep ≥80: Dark. Middle values keep the previous theme.") }
+            .addOnFailureListener { e -> toast("Could not start Sleep API updates: ${e.localizedMessage ?: "Google Play services unavailable"}") }
+        recreate()
     }
 
     @Suppress("MissingPermission")
@@ -743,14 +660,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         visit(root)
     }
 
+    override fun onStart() {
+        super.onStart()
+        if (!sleepThemeReceiverRegistered) {
+            ContextCompat.registerReceiver(this, sleepThemeChangeReceiver,
+                IntentFilter(SleepThemeReceiver.ACTION_THEME_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+            sleepThemeReceiverRegistered = true
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         applyKeepScreenAwake()
         applyThemePreference()
         updatePipParams()
         registerThemeSensor()
-        if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view" && hasPermission(Manifest.permission.CAMERA)) {
-            startEyeThemeCamera()
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        if (prefs.getBoolean("sleep_theme_enabled", false) &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+            hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
+            SleepThemeManager.subscribe(this)
         }
     }
     private fun applyKeepScreenAwake() {
@@ -760,12 +689,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
+    override fun onStop() {
+        if (sleepThemeReceiverRegistered) {
+            unregisterReceiver(sleepThemeChangeReceiver)
+            sleepThemeReceiverRegistered = false
+        }
+        super.onStop()
+    }
+
     override fun onPause() {
         sensorManager.unregisterListener(this)
-        stopEyeThemeCamera()
-        if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view") {
-            applyEyeTheme(true)
-        }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onPause()
     }
