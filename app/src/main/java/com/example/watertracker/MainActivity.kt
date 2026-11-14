@@ -73,7 +73,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         applyThemePreference()
         super.onCreate(savedInstanceState)
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyKeepScreenAwake()
         loadTodayTotal()
         buildUi()
     }
@@ -168,6 +168,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(layout, "Screen viewing mode")
+        addButton(layout, "Viewing-based mode – keep screen awake") {
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                .putString("theme", "viewing").putBoolean("keep_screen_awake", true).apply()
+            applyThemePreference()
+            applyKeepScreenAwake()
+            toast("Viewing-based mode enabled. Screen stays awake while this app is visible.")
+            recreate()
+        }
+        layout.addView(Switch(this).apply {
+            text = "Keep screen awake while Water Tracker is visible"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
+                applyKeepScreenAwake()
+                toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
+            }
+        })
         addSectionTitle(layout, "Adaptive theme modes")
         addButton(layout, "Room light – use ambient light sensor") { saveThemeMode("room_light") }
         addButton(layout, "Weather based – choose current weather") { showWeatherThemePicker() }
@@ -203,6 +221,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             "dark", "choice_dark" -> true
             "light", "choice_light" -> false
             "meditation" -> true
+            "viewing" -> false
             "time" -> {
                 if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
                 else {
@@ -485,10 +504,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyKeepScreenAwake()
         applyThemePreference()
         registerThemeSensor()
     }
+    private fun applyKeepScreenAwake() {
+        val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            .getBoolean("keep_screen_awake", true)
+        if (enabled) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
     override fun onPause() {
         sensorManager.unregisterListener(this)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
