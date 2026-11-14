@@ -38,6 +38,9 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import com.google.mlkit.vision.barcode.BarcodeScanning
+import com.google.mlkit.vision.face.FaceDetection
+import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.FaceDetectorOptions
 import com.google.mlkit.vision.common.InputImage
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -53,11 +56,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var cameraPreview: PreviewView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
+    private var eyeCameraStarted = false
+    private var eyeCameraProvider: ProcessCameraProvider? = null
+    private var eyeAnalysis: ImageAnalysis? = null
+    private var faceDetector: FaceDetector? = null
+    @Volatile private var eyeOpenFrames = 0
+    @Volatile private var eyeClosedFrames = 0
+    @Volatile private var lastEyeThemeDark: Boolean? = null
     private lateinit var sensorManager: SensorManager
     private var lastMotionThemeUpdate = 0L
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startCamera() else toast("Camera permission was not granted.")
+    }
+    private val eyeCameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) { saveThemeMode("eye_view"); startEyeThemeCamera() }
+        else toast("Camera permission is needed for Eye-Based View Theme. Dark theme remains active.")
     }
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startVoiceInput() else toast("Microphone permission was not granted.")
@@ -168,15 +182,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-        addSectionTitle(layout, "Screen viewing mode")
-        addButton(layout, "Viewing-based mode – keep screen awake") {
-            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-                .putString("theme", "viewing").putBoolean("keep_screen_awake", true).apply()
-            applyThemePreference()
-            applyKeepScreenAwake()
-            toast("Viewing-based mode enabled. Screen stays awake while this app is visible.")
-            recreate()
-        }
+        addSectionTitle(layout, "Screen awake setting")
         layout.addView(Switch(this).apply {
             text = "Keep screen awake while Water Tracker is visible"
             isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
@@ -187,6 +193,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
         })
         addSectionTitle(layout, "Adaptive theme modes")
+        addButton(layout, "Eye-Based View Theme – eyes open: Light; closed / not detected: Dark") {
+            if (hasPermission(Manifest.permission.CAMERA)) saveThemeMode("eye_view")
+            else eyeCameraPermission.launch(Manifest.permission.CAMERA)
+        }
         addButton(layout, "Room light – use ambient light sensor") { saveThemeMode("room_light") }
         addButton(layout, "Weather based – choose current weather") { showWeatherThemePicker() }
         addButton(layout, "Time based – configure your theme schedule") { showTimeThemeOptions() }
@@ -222,6 +232,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             "light", "choice_light" -> false
             "meditation" -> true
             "viewing" -> false
+            "eye_view" -> true
             "time" -> {
                 if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
                 else {
@@ -466,6 +477,87 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }, ContextCompat.getMainExecutor(this))
     }
 
+    private fun applyEyeTheme(dark: Boolean) {
+        if (lastEyeThemeDark == dark) return
+        lastEyeThemeDark = dark
+        AppCompatDelegate.setDefaultNightMode(
+            if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO
+        )
+    }
+
+    private fun startEyeThemeCamera() {
+        if (eyeCameraStarted || isFinishing || !hasPermission(Manifest.permission.CAMERA)) return
+        eyeCameraStarted = true
+        val options = FaceDetectorOptions.Builder()
+            .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+            .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_ALL)
+            .build()
+        faceDetector = FaceDetection.getClient(options)
+        val providerFuture = ProcessCameraProvider.getInstance(this)
+        providerFuture.addListener({
+            if (!eyeCameraStarted || isFinishing) return@addListener
+            val provider = providerFuture.get()
+            eyeCameraProvider = provider
+            val analysis = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            eyeAnalysis = analysis
+            analysis.setAnalyzer(cameraExecutor) { proxy ->
+                val mediaImage = proxy.image
+                if (mediaImage == null) {
+                    proxy.close()
+                } else {
+                    val input = InputImage.fromMediaImage(mediaImage, proxy.imageInfo.rotationDegrees)
+                    val task = faceDetector?.process(input)
+                    if (task == null) {
+                        proxy.close()
+                    } else {
+                        task.addOnSuccessListener(cameraExecutor) { faces ->
+                            val face = faces.maxByOrNull { it.boundingBox.width() * it.boundingBox.height() }
+                            val left = face?.leftEyeOpenProbability
+                            val right = face?.rightEyeOpenProbability
+                            if (left != null && right != null && left >= 0.60f && right >= 0.60f) {
+                                eyeOpenFrames++
+                                eyeClosedFrames = 0
+                                if (eyeOpenFrames >= 3) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(false) }
+                            } else {
+                                eyeClosedFrames++
+                                eyeOpenFrames = 0
+                                if (eyeClosedFrames >= 2) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                            }
+                        }.addOnFailureListener(cameraExecutor) {
+                            eyeOpenFrames = 0
+                            eyeClosedFrames++
+                            if (eyeClosedFrames >= 2) runOnUiThread { if (eyeCameraStarted) applyEyeTheme(true) }
+                        }.addOnCompleteListener { proxy.close() }
+                    }
+                }
+            }
+            try {
+                // The front camera is used only while this Activity is foregrounded.
+                provider.unbindAll()
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
+                applyEyeTheme(true)
+                toast("Eye-Based View Theme is active. Detection runs on-device; images are not saved or uploaded.")
+            } catch (e: Exception) {
+                eyeCameraStarted = false
+                applyEyeTheme(true)
+                toast("Unable to start eye detection. Dark theme remains active.")
+            }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    private fun stopEyeThemeCamera() {
+        eyeCameraStarted = false
+        eyeCameraProvider?.let { provider -> eyeAnalysis?.let { provider.unbind(it) } }
+        eyeAnalysis = null
+        eyeCameraProvider = null
+        faceDetector?.close()
+        faceDetector = null
+        eyeOpenFrames = 0
+        eyeClosedFrames = 0
+    }
+
     @Suppress("MissingPermission")
     private fun showApproximateLocation() {
         if (!hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) return
@@ -507,6 +599,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         applyKeepScreenAwake()
         applyThemePreference()
         registerThemeSensor()
+        if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view" && hasPermission(Manifest.permission.CAMERA)) {
+            startEyeThemeCamera()
+        }
     }
     private fun applyKeepScreenAwake() {
         val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE)
@@ -517,6 +612,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onPause() {
         sensorManager.unregisterListener(this)
+        stopEyeThemeCamera()
+        if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "eye_view") {
+            applyEyeTheme(true)
+        }
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onPause()
     }
