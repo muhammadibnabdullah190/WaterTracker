@@ -258,7 +258,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             "light", "choice_light" -> false
             "meditation" -> true
             "viewing" -> false
-            "eye_view" -> true
+            // Start in Light while the user is in the app. Eye analysis changes
+            // to Dark only after both eyes are confidently detected as closed,
+            // or after no face is detected for several consecutive frames.
+            "eye_view" -> false
             "time" -> {
                 if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
                 else {
@@ -643,9 +646,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             if (left != null && right != null) {
                                 // Use the classifier's probabilities directly. One clearly open eye
                                 // keeps Light; both clearly closed eyes switch to Dark immediately.
-                                val openThreshold = 0.25f
+                                // ML Kit probabilities can be conservative on front cameras.
+                                // Ambiguous readings retain the current theme.
+                                val openThreshold = 0.18f
+                                val closedThreshold = 0.10f
                                 val eitherEyeOpen = left >= openThreshold || right >= openThreshold
-                                val bothEyesClosed = left < openThreshold && right < openThreshold
+                                val bothEyesClosed = left <= closedThreshold && right <= closedThreshold
                                 if (eitherEyeOpen) {
                                     eyeOpenFrames++
                                     eyeClosedFrames = 0
@@ -678,12 +684,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 provider.unbindAll()
                 cameraStarted = false
                 provider.bindToLifecycle(this, CameraSelector.DEFAULT_FRONT_CAMERA, analysis)
-                applyEyeTheme(true)
-                toast("Eye-Based View Theme is active. Detection runs on-device; images are not saved or uploaded.")
+                // Do not force Dark when the camera starts. Keep Light until
+                // closed eyes or absence of a face is actually detected.
+                applyEyeTheme(false)
+                toast("Eye-Based View Theme is active. Keep your face visible to the front camera. Detection runs on-device; images are not saved or uploaded.")
             } catch (e: Exception) {
                 eyeCameraStarted = false
-                applyEyeTheme(true)
-                toast("Unable to start eye detection. Dark theme remains active.")
+                applyEyeTheme(false)
+                toast("Unable to start eye detection. Light theme remains active; check Camera permission and try again.")
             }
         }, ContextCompat.getMainExecutor(this))
     }
