@@ -309,15 +309,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val endDefault = p.getInt("time_dark_end", 7 * 60)
         TimePickerDialog(this, { _, startHour, startMinute ->
             val start = startHour * 60 + startMinute
-            TimePickerDialog(this, { _, endHour, endMinute ->
+            val endPicker = TimePickerDialog(this, { _, endHour, endMinute ->
                 val end = endHour * 60 + endMinute
                 p.edit().putString("theme", "time").putBoolean("time_all_day", false)
                     .putInt("time_dark_start", start).putInt("time_dark_end", end).apply()
                 applyThemePreference()
                 toast("Schedule saved: Dark ${formatClock(start)}–${formatClock(end)}; Light for the remaining time.")
                 recreate()
-            }, endDefault / 60, endDefault % 60, true).setTitle("Choose when Dark theme ends").show()
-        }, startDefault / 60, startDefault % 60, true).setTitle("Choose when Dark theme starts").show()
+            }, endDefault / 60, endDefault % 60, true)
+            endPicker.setTitle("Choose when Dark theme ends")
+            endPicker.show()
+        }, startDefault / 60, startDefault % 60, true).apply {
+            setTitle("Choose when Dark theme starts")
+            show()
+        }
     }
 
     private fun formatClock(minutes: Int): String =
@@ -509,7 +514,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             toast("Picture-in-Picture requires Android 8.0 or later.")
             return
         }
-        val intent = Intent(Settings.ACTION_PICTURE_IN_PICTURE_SETTINGS).apply {
+        val intent = Intent("android.settings.PICTURE_IN_PICTURE_SETTINGS").apply {
             data = Uri.parse("package:$packageName")
         }
         try {
