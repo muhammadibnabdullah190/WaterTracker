@@ -664,7 +664,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         super.onStart()
         if (!sleepThemeReceiverRegistered) {
             ContextCompat.registerReceiver(this, sleepThemeChangeReceiver,
-                IntentFilter(SleepThemeReceiver.ACTION_THEME_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
+                IntentFilter(SleepThemeManager.ACTION_THEME_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
             sleepThemeReceiverRegistered = true
         }
     }
