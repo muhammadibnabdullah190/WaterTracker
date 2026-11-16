@@ -347,25 +347,61 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         private val outline = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
             strokeWidth = dp(1).toFloat()
-            color = android.graphics.Color.argb(42, 0, 145, 190)
+            color = android.graphics.Color.argb(58, 0, 145, 190)
+        }
+        private val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.FILL
+            color = android.graphics.Color.argb(13, 0, 160, 205)
         }
         private val shine = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.FILL
-            color = android.graphics.Color.argb(28, 255, 255, 255)
+            color = android.graphics.Color.argb(48, 255, 255, 255)
         }
-        private val positions = listOf(0.08f to 0.20f, 0.91f to 0.28f, 0.16f to 0.53f, 0.84f to 0.62f, 0.07f to 0.82f, 0.94f to 0.91f)
+        private val positions = listOf(
+            0.08f to 0.18f, 0.91f to 0.25f, 0.16f to 0.48f,
+            0.84f to 0.60f, 0.07f to 0.79f, 0.94f to 0.88f,
+            0.48f to 0.34f, 0.68f to 0.76f
+        )
+        private var animationProgress = 0f
+        private val floatAnimator = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 10000L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                animationProgress = it.animatedValue as Float
+                invalidate()
+            }
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (!floatAnimator.isStarted) floatAnimator.start()
+        }
+
+        override fun onDetachedFromWindow() {
+            floatAnimator.cancel()
+            super.onDetachedFromWindow()
+        }
+
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             positions.forEachIndexed { index, point ->
-                val size = dp(if (index % 2 == 0) 23 else 16).toFloat()
-                val x = width * point.first
-                val y = height * point.second
+                val size = dp(if (index % 3 == 0) 23 else if (index % 2 == 0) 18 else 14).toFloat()
+                val phase = (animationProgress + index * 0.137f) % 1f
+                val drift = kotlin.math.sin(phase * Math.PI * 2.0).toFloat()
+                val x = width * point.first + drift * dp(5)
+                val y = height * point.second + drift * dp(8)
+                val alpha = (0.65f + 0.35f * kotlin.math.sin(phase * Math.PI * 2.0).toFloat()).coerceIn(0.25f, 1f)
+                outline.alpha = (58 * alpha).toInt()
+                fill.alpha = (13 * alpha).toInt()
+                shine.alpha = (48 * alpha).toInt()
                 val path = android.graphics.Path().apply {
                     moveTo(x, y - size)
                     cubicTo(x - size * 0.12f, y - size * 0.48f, x - size * 0.72f, y + size * 0.18f, x, y + size * 0.55f)
                     cubicTo(x + size * 0.72f, y + size * 0.18f, x + size * 0.12f, y - size * 0.48f, x, y - size)
                     close()
                 }
+                canvas.drawPath(path, fill)
                 canvas.drawPath(path, outline)
                 canvas.drawCircle(x - size * 0.17f, y - size * 0.05f, size * 0.12f, shine)
             }
