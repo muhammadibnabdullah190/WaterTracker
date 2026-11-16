@@ -64,6 +64,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var screenDimOverlay: android.view.View
     private lateinit var blueFilterOverlay: android.view.View
     private lateinit var cameraPreview: PreviewView
+    private lateinit var cameraPreviewCard: com.google.android.material.card.MaterialCardView
+    private var scanningExternalCamera = false
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
     private lateinit var sensorManager: SensorManager
@@ -91,8 +93,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         updateLocationStatus()
         if (results.values.none { it }) toast("Location access was not granted.")
     }
-    private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) {
-        if (it != null) toast("Photo captured successfully.")
+    private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
+        if (bitmap != null) {
+            if (scanningExternalCamera) {
+                val input = InputImage.fromBitmap(bitmap, 0)
+                BarcodeScanning.getClient().process(input)
+                    .addOnSuccessListener { codes ->
+                        val value = codes.firstOrNull()?.rawValue
+                        toast(if (value != null) "Barcode / QR: $value" else "No barcode or QR code found in the captured image.")
+                    }
+                    .addOnFailureListener { toast("Could not scan the captured image.") }
+            } else toast("Photo captured successfully.")
+        }
+        scanningExternalCamera = false
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -237,37 +250,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(page, "View daily history", secondary = true) { showDailyHistory() }
         refreshHistoryDisplay()
 
-        addSectionTitle(page, "Voice logging", "Log your water hands-free.")
+        addSectionTitle(page, "Voice logging")
         addButton(page, "🎙  Speak to log water") { requestVoice() }
 
-        addSectionTitle(page, "Camera tools", "Use the camera only when you choose.")
-        addButton(page, "▦  Scan bottle barcode / QR code") {
-            if (hasPermission(Manifest.permission.CAMERA)) startCamera()
-            else cameraPermission.launch(Manifest.permission.CAMERA)
-        }
-        addButton(page, "📷  Take a water bottle photo", secondary = true) {
+        addSectionTitle(page, "Camera tools")
+        addButton(page, "▦  Scan barcode / QR code") {
+            scanningExternalCamera = true
             if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
             else cameraPermission.launch(Manifest.permission.CAMERA)
         }
-        cameraPreview = PreviewView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(210))
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+        addButton(page, "📷  Take a water bottle photo", secondary = true) {
+            scanningExternalCamera = false
+            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
+            else cameraPermission.launch(Manifest.permission.CAMERA)
         }
-        val previewCard = com.google.android.material.card.MaterialCardView(this).apply {
-            radius = dp(20).toFloat()
-            cardElevation = dp(2).toFloat()
-            strokeWidth = 0
-            layoutParams = LinearLayout.LayoutParams(-1, dp(210)).apply { topMargin = dp(6) }
-            addView(cameraPreview)
-        }
-        page.addView(previewCard)
 
-        addSectionTitle(page, "Location tagging", "Optionally save the place with each water entry. Location is not collected unless you enable this.")
+        addSectionTitle(page, "Location tagging", "Save location with entries")
         locationText = TextView(this).apply {
-            text = "Location access has not been requested."
-            textSize = 14f
+            text = ""
+            visibility = android.view.View.GONE
+            textSize = 12f
             setTextColor(android.graphics.Color.rgb(76, 103, 120))
-            setPadding(dp(4), dp(4), dp(4), dp(8))
+            setPadding(dp(2), dp(1), dp(2), dp(2))
         }
         page.addView(locationText)
         page.addView(Switch(this).apply {
@@ -290,6 +294,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         updateLocationStatus()
 
         addSectionTitle(page, "Appearance", "Transparent theme with adjustable background transparency.")
+        var pendingTransparency = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            .getInt("transparency_level", 75).coerceIn(30, 100)
         val transparencyLabel = TextView(this).apply {
             textSize = 12f
             setTextColor(android.graphics.Color.rgb(83, 112, 130))
@@ -298,20 +304,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         page.addView(transparencyLabel)
         val transparencySeek = android.widget.SeekBar(this).apply {
             max = 70
-            progress = (getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75) - 30).coerceIn(0, 70)
+            progress = pendingTransparency - 30
             setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                    val level = progress + 30
-                    transparencyLabel.text = "Transparency: $level% opaque"
-                    getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putInt("transparency_level", level).apply()
-                    page.setBackgroundColor(android.graphics.Color.argb(level * 255 / 100, 224, 244, 250))
+                    pendingTransparency = progress + 30
+                    transparencyLabel.text = "Transparency: $pendingTransparency% opaque"
+                    page.setBackgroundColor(android.graphics.Color.argb(pendingTransparency * 255 / 100, 224, 244, 250))
+                    applyToggleTransparency(page, pendingTransparency)
                 }
                 override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
                 override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
             })
         }
         page.addView(transparencySeek)
-        transparencyLabel.text = "Transparency: ${transparencySeek.progress + 30}% opaque"
+        transparencyLabel.text = "Transparency: $pendingTransparency% opaque"
+        applyToggleTransparency(page, pendingTransparency)
+        addButton(page, "✓  Save theme changes") {
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                .putString("theme", "transparent")
+                .putInt("transparency_level", pendingTransparency)
+                .apply()
+            toast("Theme changes saved.")
+        }
 
         addSectionTitle(page, "Display & accessibility", "Adjust the app's appearance and readability.")
         addSectionTitle(page, "Screen dim", "Turn the app screen dimming on or off.")
@@ -434,6 +448,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
+
+    private fun applyToggleTransparency(root: android.view.View, opacity: Int) {
+        fun visit(view: android.view.View) {
+            if (view is Switch) {
+                val alpha = (opacity * 255 / 100).coerceIn(1, 255)
+                view.thumbTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.argb(alpha, 0, 125, 166))
+                view.trackTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.argb((alpha * 0.55f).toInt(), 90, 160, 185))
+            }
+            if (view is android.view.ViewGroup) {
+                for (i in 0 until view.childCount) visit(view.getChildAt(i))
+            }
+        }
+        visit(root)
+    }
 
     private fun applyThemePreference() {
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("theme", "transparent").apply()
