@@ -215,54 +215,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         page.addView(summary)
         refreshWaterDisplay()
 
-        addSectionTitle(page, "Quick add", "Choose the amount you just drank.")
+        addSectionTitle(page, "Quick add", "Log water in one tap.")
         val quickRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             weightSum = 2f
         }
         val add250 = createActionButton("＋ 250 ml") { addWater(250) }.apply {
-            layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) }
         }
         val add500 = createActionButton("＋ 500 ml") { addWater(500) }.apply {
-            layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginStart = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(6) }
         }
         quickRow.addView(add250)
         quickRow.addView(add500)
         page.addView(quickRow)
-        addButton(page, "＋  Manual water entry", secondary = true) { showManualWaterEntry() }
-        addButton(page, "↶  Undo last entry", secondary = true) { undoLastWaterEntry() }
-        addButton(page, "Reset today's total", secondary = true) {
-            totalMl = 0
-            saveTodayEntries(JSONArray())
-            saveTodayTotal()
-            refreshWaterDisplay()
-            refreshHistoryDisplay()
-        }
+
         historyText = TextView(this).apply {
             textSize = 13f
             setTextColor(android.graphics.Color.rgb(76, 103, 120))
             setPadding(dp(6), dp(6), dp(6), dp(8))
         }
-        page.addView(historyText)
-        addButton(page, "View daily history", secondary = true) { showDailyHistory() }
-        refreshHistoryDisplay()
-
-        addSectionTitle(page, "Voice logging")
-        addButton(page, "🎙  Speak to log water") { requestVoice() }
-
-        addSectionTitle(page, "Camera tools")
-        addButton(page, "▦  Scan barcode / QR code") {
-            scanningExternalCamera = true
-            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
-            else cameraPermission.launch(Manifest.permission.CAMERA)
-        }
-        addButton(page, "📷  Take a water bottle photo", secondary = true) {
-            scanningExternalCamera = false
-            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
-            else cameraPermission.launch(Manifest.permission.CAMERA)
-        }
-
-        addSectionTitle(page, "Location tagging", "Save location with entries")
         locationText = TextView(this).apply {
             text = ""
             visibility = android.view.View.GONE
@@ -270,25 +242,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setTextColor(android.graphics.Color.rgb(76, 103, 120))
             setPadding(dp(2), dp(1), dp(2), dp(2))
         }
-        page.addView(locationText)
-        page.addView(Switch(this).apply {
-            text = "Save location with entries"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("location_tagging", enabled).apply()
-                locationTaggingEnabled = enabled
-                if (enabled) {
-                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
-                } else {
-                    toast("Location tagging disabled.")
-                }
-            }
-        })
-        addButton(page, "Manage Location permission in Android Settings", secondary = true) {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-        }
+        refreshHistoryDisplay()
         updateLocationStatus()
+        addButton(page, "☷  More water tools, camera & location") {
+            showWaterToolsDialog()
+        }
 
         addSectionTitle(page, "Appearance", "Transparent theme with adjustable background transparency.")
         var pendingTransparency = getSharedPreferences("water_tracker", MODE_PRIVATE)
@@ -686,6 +644,65 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setMargins(dp(3), dp(3), dp(3), dp(3))
         }
         grid.addView(button, params)
+    }
+
+    private fun showWaterToolsDialog() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(4), dp(16), dp(12))
+        }
+        addSectionTitle(content, "Quick entries")
+        addButton(content, "＋  Manual water entry", secondary = true) { showManualWaterEntry() }
+        addButton(content, "↶  Undo last entry", secondary = true) { undoLastWaterEntry() }
+        addButton(content, "Reset today's total", secondary = true) {
+            totalMl = 0
+            saveTodayEntries(JSONArray())
+            saveTodayTotal()
+            refreshWaterDisplay()
+            refreshHistoryDisplay()
+        }
+        addButton(content, "View daily history", secondary = true) { showDailyHistory() }
+        content.addView(historyText)
+        addSectionTitle(content, "Voice logging")
+        addButton(content, "🎙  Speak to log water") { requestVoice() }
+        addSectionTitle(content, "Camera tools")
+        addButton(content, "▦  Scan barcode / QR code") {
+            scanningExternalCamera = true
+            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
+            else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+        addButton(content, "📷  Take a water bottle photo", secondary = true) {
+            scanningExternalCamera = false
+            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
+            else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+        addSectionTitle(content, "Location tagging", "Save location with entries")
+        content.addView(locationText)
+        content.addView(Switch(this).apply {
+            text = "Save location with entries"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("location_tagging", enabled).apply()
+                locationTaggingEnabled = enabled
+                if (enabled) {
+                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+                } else {
+                    toast("Location tagging disabled.")
+                }
+            }
+        })
+        addButton(content, "Manage Location permission in Android Settings", secondary = true) {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
+        updateLocationStatus()
+        val scroll = ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this)
+            .setTitle("Water tools")
+            .setView(scroll)
+            .setPositiveButton("Close", null)
+            .show()
+        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
     private fun showDisplayAccessibilityDialog() {
