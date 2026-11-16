@@ -20,3 +20,8 @@ After the workflow succeeds:
 
 ## Current limitations
 This is a starter build. Water totals are held in memory and reset when the app process is recreated. The photo button uses Android's system camera picker. Test on a physical device before relying on it.
+
+
+## Build APK
+
+The Android APK is built automatically by GitHub Actions whenever changes are pushed to the `main` branch. The workflow can also be started manually from the Actions tab using **Build Water Tracker APK**.
