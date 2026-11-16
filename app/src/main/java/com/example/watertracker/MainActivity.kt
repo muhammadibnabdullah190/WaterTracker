@@ -176,9 +176,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         heroContent.addView(heroText)
         hero.addView(heroContent)
         page.addView(hero)
-        page.addView(WaterDropletsView(this), LinearLayout.LayoutParams(-1, dp(34)).apply {
-            bottomMargin = dp(5)
-        })
 
         val summary = com.google.android.material.card.MaterialCardView(this).apply {
             radius = dp(24).toFloat()
@@ -337,37 +334,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         blueFilterOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
     }
 
-
-    private inner class WaterDropletsView(context: Context) : android.view.View(context) {
-        private val dropPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(1).toFloat()
-            color = android.graphics.Color.argb(95, 35, 155, 195)
-        }
-        private val shinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(1).toFloat()
-            color = android.graphics.Color.argb(65, 255, 255, 255)
-        }
-        override fun onDraw(canvas: android.graphics.Canvas) {
-            super.onDraw(canvas)
-            val positions = listOf(0.08f to 0.5f, 0.23f to 0.25f, 0.43f to 0.62f,
-                0.62f to 0.30f, 0.79f to 0.62f, 0.94f to 0.38f)
-            positions.forEachIndexed { index, pair ->
-                val cx = width * pair.first
-                val cy = height * pair.second
-                val radius = dp(if (index % 2 == 0) 7 else 5).toFloat()
-                val path = android.graphics.Path().apply {
-                    moveTo(cx, cy - radius)
-                    cubicTo(cx - radius * 0.45f, cy - radius * 0.15f, cx - radius, cy + radius * 0.35f, cx, cy + radius)
-                    cubicTo(cx + radius, cy + radius * 0.35f, cx + radius * 0.45f, cy - radius * 0.15f, cx, cy - radius)
-                    close()
-                }
-                canvas.drawPath(path, dropPaint)
-                canvas.drawLine(cx - radius * 0.22f, cy - radius * 0.18f, cx - radius * 0.08f, cy + radius * 0.12f, shinePaint)
-            }
-        }
-    }
 
     private lateinit var waterProgress: CircularHydrationProgressView
 
@@ -1032,17 +998,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun checkForAppUpdate() {
-        toast("Checking the latest verified Water Tracker build…")
+        toast("Checking GitHub for the latest Water Tracker update…")
         Thread {
             try {
                 val connection = java.net.URL("https://api.github.com/repos/muhammadibnabdullah190/WaterTracker/releases/latest")
                     .openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 10000
-                connection.readTimeout = 10000
+                connection.connectTimeout = 15000
+                connection.readTimeout = 15000
                 connection.setRequestProperty("Accept", "application/vnd.github+json")
                 connection.setRequestProperty("User-Agent", "WaterTracker-Android")
                 val code = connection.responseCode
-                if (code != 200) throw IllegalStateException(if (code == 404) "No published verified release is available yet." else "GitHub returned HTTP $code.")
+                if (code != 200) throw IllegalStateException(if (code == 404) "No published release is available yet." else "GitHub returned HTTP $code.")
                 val body = connection.inputStream.bufferedReader().use { it.readText() }
                 connection.disconnect()
                 val release = JSONObject(body)
@@ -1055,19 +1021,64 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         break
                     }
                 }
-                val downloadUrl = apkUrl
+                val downloadUrl = apkUrl ?: throw IllegalStateException("The latest GitHub release does not contain app-debug.apk.")
+                runOnUiThread { toast("Latest release found. Downloading update…") }
+                val apkConnection = java.net.URL(downloadUrl).openConnection() as java.net.HttpURLConnection
+                apkConnection.connectTimeout = 20000
+                apkConnection.readTimeout = 30000
+                apkConnection.instanceFollowRedirects = true
+                apkConnection.setRequestProperty("User-Agent", "WaterTracker-Android")
+                if (apkConnection.responseCode != 200) throw IllegalStateException("APK download failed (HTTP ${apkConnection.responseCode}).")
+                val updateDir = java.io.File(cacheDir, "updates").apply { mkdirs() }
+                val apkFile = java.io.File(updateDir, "watertracker-update.apk")
+                apkConnection.inputStream.use { input ->
+                    apkFile.outputStream().use { output -> input.copyTo(output) }
+                }
+                apkConnection.disconnect()
+                if (apkFile.length() < 1024L * 1024L) {
+                    apkFile.delete()
+                    throw IllegalStateException("Downloaded APK is incomplete. Please try again.")
+                }
+                java.util.zip.ZipFile(apkFile).use { zip ->
+                    if (zip.getEntry("AndroidManifest.xml") == null) throw IllegalStateException("Downloaded file is not a valid Android APK.")
+                }
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                    .putString("pending_update_apk", apkFile.absolutePath).apply()
                 runOnUiThread {
-                    if (downloadUrl == null) toast("Latest release has no APK attached. Please try again later.")
-                    else {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
-                        try { startActivity(intent) }
-                        catch (_: Exception) { toast("Unable to open the verified APK download.") }
-                    }
+                    toast("Download complete. Opening Android installer…")
+                    installDownloadedUpdate(apkFile)
                 }
             } catch (e: Exception) {
-                runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please try again later."}") }
+                runOnUiThread { toast("Update failed: ${e.localizedMessage ?: "Please try again later."}") }
             }
         }.start()
+    }
+
+    private fun installDownloadedUpdate(apkFile: java.io.File) {
+        if (!apkFile.exists()) {
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit().remove("pending_update_apk").apply()
+            toast("Downloaded update is no longer available. Please check again.")
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !packageManager.canRequestPackageInstalls()) {
+            val settingsIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+            startActivity(settingsIntent)
+            toast("Allow Water Tracker to install this update, then return to the app.")
+            return
+        }
+        try {
+            val apkUri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.fileprovider", apkFile
+            )
+            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(installIntent)
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit().remove("pending_update_apk").apply()
+        } catch (e: Exception) {
+            toast("Could not open Android installer: ${e.localizedMessage ?: "Please try again."}")
+        }
     }
 
     private fun showAccessibilityDialog() {
@@ -1497,6 +1508,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
+        val pendingUpdatePath = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("pending_update_apk", null)
+        if (!pendingUpdatePath.isNullOrBlank() &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())) {
+            installDownloadedUpdate(java.io.File(pendingUpdatePath))
+        }
         applyKeepScreenAwake()
         applyScreenDim(getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false))
         applyThemePreference()
