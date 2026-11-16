@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             orientation = LinearLayout.HORIZONTAL
             gravity = android.view.Gravity.CENTER_VERTICAL
         }
-        hydrationHeader.addView(createSectionGraphic("💧", 42))
+        hydrationHeader.addView(createSectionGraphic("💧", 38))
         hydrationHeader.addView(TextView(this).apply {
             text = "TODAY'S HYDRATION"
             textSize = 13f
@@ -648,49 +648,41 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             "voice logging" -> "🎙️"
             "camera tools" -> "📸"
             "location tagging" -> "📍"
+            "themes" -> "🌈"
             "display & accessibility" -> "✨"
-            else -> null
+            "screen dim" -> "🌘"
+            "blue light filter" -> "🌙"
+            "font size" -> "🔠"
+            "font style" -> "✍️"
+            "screen orientation" -> "📱"
+            "screen awake setting" -> "☀️"
+            "app updates" -> "🔄"
+            else -> "💠"
         }
-        if (graphic != null) {
-            val header = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(0, dp(18), 0, dp(5))
-            }
-            header.addView(createSectionGraphic(graphic, 48))
-            val labels = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(11), 0, 0, 0)
-            }
-            labels.addView(TextView(this).apply {
-                text = title
-                textSize = 19f
-                setTextColor(android.graphics.Color.rgb(22, 65, 91))
-                setTypeface(typeface, Typeface.BOLD)
-            })
-            if (subtitle != null) labels.addView(TextView(this).apply {
-                text = subtitle
-                textSize = 12f
-                setTextColor(android.graphics.Color.rgb(100, 127, 143))
-                setPadding(0, dp(2), 0, 0)
-            })
-            header.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
-            parent.addView(header)
-        } else {
-            parent.addView(TextView(this).apply {
-                text = title
-                textSize = 20f
-                setTextColor(android.graphics.Color.rgb(22, 65, 91))
-                setTypeface(typeface, Typeface.BOLD)
-                setPadding(dp(2), dp(22), dp(2), dp(3))
-            })
-            if (subtitle != null) parent.addView(TextView(this).apply {
-                text = subtitle
-                textSize = 13f
-                setTextColor(android.graphics.Color.rgb(100, 127, 143))
-                setPadding(dp(3), 0, dp(3), dp(8))
-            })
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(11), 0, dp(3))
         }
+        header.addView(createSectionGraphic(graphic, 38))
+        val labels = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(9), 0, 0, 0)
+        }
+        labels.addView(TextView(this).apply {
+            text = title
+            textSize = 16f
+            setTextColor(android.graphics.Color.rgb(22, 65, 91))
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        if (subtitle != null) labels.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 11.5f
+            setTextColor(android.graphics.Color.rgb(100, 127, 143))
+            setPadding(0, dp(1), 0, 0)
+        })
+        header.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+        parent.addView(header)
     }
 
     private fun addButton(parent: LinearLayout, label: String, secondary: Boolean = false, action: () -> Unit) {
