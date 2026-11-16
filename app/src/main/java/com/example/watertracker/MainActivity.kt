@@ -122,17 +122,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(18))
-            setBackgroundColor(android.graphics.Color.argb(
-                getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(30, 100) * 255 / 100,
-                224, 244, 250
-            ))
+            setBackgroundColor(android.graphics.Color.rgb(224, 244, 250))
         }
 
         val hero = com.google.android.material.card.MaterialCardView(this).apply {
             radius = dp(26).toFloat()
             cardElevation = dp(5).toFloat()
             strokeWidth = 0
-            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.argb(218, 13, 92, 153) else android.graphics.Color.rgb(13, 92, 153))
+            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.rgb(13, 92, 153) else android.graphics.Color.rgb(13, 92, 153))
             layoutParams = LinearLayout.LayoutParams(-1, dp(112)).apply { bottomMargin = dp(10) }
         }
         val heroContent = LinearLayout(this).apply {
@@ -141,7 +138,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(20), dp(18), dp(18), dp(18))
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                if (transparentTheme) intArrayOf(android.graphics.Color.argb(218, 5, 105, 175), android.graphics.Color.argb(218, 0, 150, 160))
+                if (transparentTheme) intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
                 else intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
             ).apply { cornerRadius = dp(26).toFloat() }
         }
@@ -173,7 +170,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             cardElevation = dp(3).toFloat()
             strokeWidth = dp(1)
             setStrokeColor(android.graphics.Color.rgb(218, 233, 243))
-            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.argb(205, 255, 255, 255) else android.graphics.Color.WHITE)
+            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.WHITE else android.graphics.Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(18) }
         }
         val summaryContent = LinearLayout(this).apply {
@@ -295,7 +292,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         addSectionTitle(page, "Appearance", "Transparent theme with adjustable background transparency.")
         var pendingTransparency = getSharedPreferences("water_tracker", MODE_PRIVATE)
-            .getInt("transparency_level", 75).coerceIn(30, 100)
+            .getInt("transparency_level", 75).coerceIn(0, 100)
         val transparencyLabel = TextView(this).apply {
             textSize = 12f
             setTextColor(android.graphics.Color.rgb(83, 112, 130))
@@ -303,22 +300,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         page.addView(transparencyLabel)
         val transparencySeek = android.widget.SeekBar(this).apply {
-            max = 70
-            progress = pendingTransparency - 30
+            max = 100
+            progress = pendingTransparency
             setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                    pendingTransparency = progress + 30
-                    transparencyLabel.text = "Transparency: $pendingTransparency% opaque"
-                    page.setBackgroundColor(android.graphics.Color.argb(pendingTransparency * 255 / 100, 224, 244, 250))
-                    applyToggleTransparency(page, pendingTransparency)
+                    pendingTransparency = progress
+                    transparencyLabel.text = "Opacity: $pendingTransparency%  •  ${100 - pendingTransparency}% transparent"
+                    applyViewOpacity(page, pendingTransparency)
                 }
                 override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
                 override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
             })
         }
         page.addView(transparencySeek)
-        transparencyLabel.text = "Transparency: $pendingTransparency% opaque"
-        applyToggleTransparency(page, pendingTransparency)
+        transparencyLabel.text = "Opacity: $pendingTransparency%  •  ${100 - pendingTransparency}% transparent"
+        applyViewOpacity(page, pendingTransparency)
         addButton(page, "✓  Save theme changes") {
             getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
                 .putString("theme", "transparent")
@@ -390,6 +386,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(6), dp(4), dp(12))
         })
         applyDisplayPreferences(page)
+        applyViewOpacity(page, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
@@ -449,12 +446,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setOnClickListener { action() }
         }
 
-    private fun applyToggleTransparency(root: android.view.View, opacity: Int) {
+    private fun applyViewOpacity(root: android.view.View, opacity: Int) {
+        val alpha = opacity.coerceIn(0, 100) * 255 / 100
         fun visit(view: android.view.View) {
+            view.background?.mutate()?.alpha = alpha
             if (view is Switch) {
-                val alpha = (opacity * 255 / 100).coerceIn(1, 255)
-                view.thumbTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.argb(alpha, 0, 125, 166))
-                view.trackTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.argb((alpha * 0.55f).toInt(), 90, 160, 185))
+                view.thumbTintList = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.argb(alpha, 0, 125, 166)
+                )
+                view.trackTintList = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.argb((alpha * 0.55f).toInt(), 90, 160, 185)
+                )
             }
             if (view is android.view.ViewGroup) {
                 for (i in 0 until view.childCount) visit(view.getChildAt(i))
@@ -713,8 +715,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                 if (transparent) intArrayOf(
-                    android.graphics.Color.argb(220, top ushr 16 and 255, top ushr 8 and 255, top and 255),
-                    android.graphics.Color.argb(220, bottom ushr 16 and 255, bottom ushr 8 and 255, bottom and 255)
+                    android.graphics.Color.rgb(top ushr 16 and 255, top ushr 8 and 255, top and 255),
+                    android.graphics.Color.rgb(bottom ushr 16 and 255, bottom ushr 8 and 255, bottom and 255)
                 ) else intArrayOf(top, bottom)
             ).apply {
                 cornerRadius = dp(13).toFloat()
