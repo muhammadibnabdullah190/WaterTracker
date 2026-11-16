@@ -94,76 +94,155 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun buildUi() {
-        val layout = LinearLayout(this).apply {
+        val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(36, 40, 36, 32)
+            setPadding(dp(18), dp(18), dp(18), dp(30))
+            setBackgroundColor(android.graphics.Color.rgb(242, 248, 252))
         }
 
-        layout.addView(TextView(this).apply {
-            text = "💧 Water Tracker"
-            textSize = 28f
-            setPadding(0, 0, 0, 12)
+        val hero = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(26).toFloat()
+            cardElevation = dp(5).toFloat()
+            strokeWidth = 0
+            setCardBackgroundColor(android.graphics.Color.rgb(13, 92, 153))
+            layoutParams = LinearLayout.LayoutParams(-1, dp(150)).apply { bottomMargin = dp(18) }
+        }
+        val heroContent = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(18), dp(18), dp(18))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
+            ).apply { cornerRadius = dp(26).toFloat() }
+        }
+        val logo = android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_water_tracker)
+            layoutParams = LinearLayout.LayoutParams(dp(76), dp(76)).apply { marginEnd = dp(16) }
+            contentDescription = "Water Tracker icon"
+        }
+        heroContent.addView(logo)
+        val heroText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        heroText.addView(TextView(this).apply {
+            text = "Water Tracker"
+            textSize = 27f
+            setTextColor(android.graphics.Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
         })
-
-        layout.addView(TextView(this).apply {
-            text = "Track your daily hydration"
-            textSize = 16f
+        heroText.addView(TextView(this).apply {
+            text = "Small sips. Better habits."
+            textSize = 14f
+            setTextColor(android.graphics.Color.rgb(224, 245, 255))
+            setPadding(0, dp(5), 0, 0)
         })
+        heroContent.addView(heroText)
+        hero.addView(heroContent)
+        page.addView(hero)
 
-
+        val summary = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(24).toFloat()
+            cardElevation = dp(3).toFloat()
+            strokeWidth = dp(1)
+            setStrokeColor(android.graphics.Color.rgb(218, 233, 243))
+            setCardBackgroundColor(android.graphics.Color.WHITE)
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(18) }
+        }
+        val summaryContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(18), dp(20), dp(20))
+        }
+        summaryContent.addView(TextView(this).apply {
+            text = "TODAY'S HYDRATION"
+            textSize = 12f
+            letterSpacing = 0.12f
+            setTextColor(android.graphics.Color.rgb(65, 119, 150))
+            setTypeface(typeface, Typeface.BOLD)
+        })
         totalText = TextView(this).apply {
-            textSize = 25f
-            setPadding(0, 28, 0, 8)
+            textSize = 30f
+            setTextColor(android.graphics.Color.rgb(20, 55, 78))
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(0, dp(8), 0, dp(3))
         }
-        layout.addView(totalText)
-
+        summaryContent.addView(totalText)
         progressText = TextView(this).apply {
-            textSize = 16f
-            setPadding(0, 0, 0, 18)
+            textSize = 14f
+            setTextColor(android.graphics.Color.rgb(83, 112, 130))
+            setPadding(0, 0, 0, dp(14))
         }
-        layout.addView(progressText)
+        summaryContent.addView(progressText)
+        waterProgress = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 150, 180))
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(225, 239, 246))
+            progress = 0
+        }
+        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(10)))
+        summary.addView(summaryContent)
+        page.addView(summary)
         refreshWaterDisplay()
 
-        addButton(layout, "Add 250 ml") { addWater(250) }
-        addButton(layout, "Add 500 ml") { addWater(500) }
-        addButton(layout, "Undo last 250 ml") { addWater(-250) }
-        addButton(layout, "Reset today's total") {
+        addSectionTitle(page, "Quick add", "Choose the amount you just drank.")
+        val quickRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 2f
+        }
+        val add250 = createActionButton("＋ 250 ml") { addWater(250) }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginEnd = dp(6) }
+        }
+        val add500 = createActionButton("＋ 500 ml") { addWater(500) }.apply {
+            layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply { marginStart = dp(6) }
+        }
+        quickRow.addView(add250)
+        quickRow.addView(add500)
+        page.addView(quickRow)
+        addButton(page, "↶  Undo last 250 ml") { addWater(-250) }
+        addButton(page, "Reset today's total", secondary = true) {
             totalMl = 0
             saveTodayTotal()
             refreshWaterDisplay()
         }
 
-        addSectionTitle(layout, "Voice logging")
-        addButton(layout, "🎙 Speak to log water") { requestVoice() }
+        addSectionTitle(page, "Voice logging", "Log your water hands-free.")
+        addButton(page, "🎙  Speak to log water") { requestVoice() }
 
-        addSectionTitle(layout, "Camera tools")
-        addButton(layout, "Scan a bottle barcode / QR code") {
+        addSectionTitle(page, "Camera tools", "Use the camera only when you choose.")
+        addButton(page, "▦  Scan bottle barcode / QR code") {
             if (hasPermission(Manifest.permission.CAMERA)) startCamera()
             else cameraPermission.launch(Manifest.permission.CAMERA)
         }
-        addButton(layout, "Take a water bottle photo") {
+        addButton(page, "📷  Take a water bottle photo", secondary = true) {
             if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
             else cameraPermission.launch(Manifest.permission.CAMERA)
         }
         cameraPreview = PreviewView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, 420)
+            layoutParams = LinearLayout.LayoutParams(-1, dp(210))
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
-        layout.addView(cameraPreview)
+        val previewCard = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(20).toFloat()
+            cardElevation = dp(2).toFloat()
+            strokeWidth = 0
+            layoutParams = LinearLayout.LayoutParams(-1, dp(210)).apply { topMargin = dp(6) }
+            addView(cameraPreview)
+        }
+        page.addView(previewCard)
 
-        addSectionTitle(layout, "Approximate location")
+        addSectionTitle(page, "Approximate location", "Optional location information.")
         locationText = TextView(this).apply {
             text = "Location access has not been requested."
-            textSize = 15f
-            setPadding(0, 8, 0, 8)
+            textSize = 14f
+            setTextColor(android.graphics.Color.rgb(76, 103, 120))
+            setPadding(dp(4), dp(4), dp(4), dp(8))
         }
-        layout.addView(locationText)
-        addButton(layout, "Check approximate location") {
+        page.addView(locationText)
+        addButton(page, "Check approximate location", secondary = true) {
             if (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) showApproximateLocation()
             else locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
-        addSectionTitle(layout, "Theme Settings")
-        addButton(layout, "Muraqaba Theme – Awake: Light; Asleep: Dark") {
+        addSectionTitle(page, "Themes", "Choose how the app adapts to your surroundings.")
+        addButton(page, "☾  Muraqaba theme – sleep activity sensor") {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 toast("Muraqaba Theme requires Android 10 or later.")
             } else if (hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
@@ -172,58 +251,95 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 sleepActivityPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
             }
         }
-        layout.addView(TextView(this).apply {
-            text = "Muraqaba confidence thresholds: 0–20 = Awake / Light; 80–100 = Asleep / Dark; 21–79 = retain the previous theme. Uses device motion and ambient-light sensors, not the camera. Updates are periodic and may take about 10 minutes to arrive."
+        val muraqabaInfo = TextView(this).apply {
+            text = "Awake 0–20: Light  •  Asleep 80–100: Dark  •  21–79: keep previous theme. Uses activity recognition, not the camera."
             textSize = 13f
-            setPadding(0, 4, 0, 12)
-        })
-        addButton(layout, "Room light – use ambient light sensor") { saveThemeMode("room_light") }
-        addButton(layout, "Weather based – choose current weather") { showWeatherThemePicker() }
-        addButton(layout, "Time based – configure your theme schedule") { showTimeThemeOptions() }
-        addButton(layout, "Day–night based – local day/night cycle") { saveThemeMode("day_night") }
-        addButton(layout, "Choice preference – select Light or Dark") { showChoiceThemePicker() }
-        addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }
+            setTextColor(android.graphics.Color.rgb(83, 112, 130))
+            setPadding(dp(4), dp(4), dp(4), dp(10))
+        }
+        page.addView(muraqabaInfo)
+        addButton(page, "Room light – ambient light sensor", secondary = true) { saveThemeMode("room_light") }
+        addButton(page, "Weather based – choose current weather", secondary = true) { showWeatherThemePicker() }
+        addButton(page, "Time based – configure schedule", secondary = true) { showTimeThemeOptions() }
+        addButton(page, "Day–night based", secondary = true) { saveThemeMode("day_night") }
+        addButton(page, "Choice preference – Light or Dark", secondary = true) { showChoiceThemePicker() }
+        addButton(page, "Motion detection based", secondary = true) { saveThemeMode("motion") }
         val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
-        layout.addView(TextView(this).apply {
-            text = "Selected theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}. Room-light and motion modes use device sensors. Weather mode asks you to select the current condition to avoid background data use."
+        page.addView(TextView(this).apply {
+            text = "Current theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}"
             textSize = 13f
-            setPadding(0, 8, 0, 12)
+            setTextColor(android.graphics.Color.rgb(83, 112, 130))
+            setPadding(dp(4), dp(6), dp(4), dp(10))
         })
-        addSectionTitle(layout, "Display & Accessibility")
-        addButton(layout, "Color correction / color filters") {
+
+        addSectionTitle(page, "Display & accessibility", "Adjust the app's appearance and readability.")
+        addButton(page, "Color correction / color filters", secondary = true) {
             toast("Enable color correction in Android accessibility settings.")
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         }
-        addSectionTitle(layout, "Font size")
-        addButton(layout, "Smaller font") { changeFontSize(-0.1f) }
-        addButton(layout, "Larger font") { changeFontSize(0.1f) }
-        addButton(layout, "Reset font size") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
-        addSectionTitle(layout, "Font style")
-        addButton(layout, "Default font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
-        addButton(layout, "Serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
-        addButton(layout, "Sans-serif font") { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
-        addButton(layout, "Toggle bold text") { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
-        addSectionTitle(layout, "Screen orientation")
-        addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-        addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-        addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-        addSectionTitle(layout, "Screen awake setting")
-        layout.addView(Switch(this).apply {
+        addSectionTitle(page, "Font size")
+        addButton(page, "Smaller font", secondary = true) { changeFontSize(-0.1f) }
+        addButton(page, "Larger font", secondary = true) { changeFontSize(0.1f) }
+        addButton(page, "Reset font size", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
+        addSectionTitle(page, "Font style")
+        addButton(page, "Default font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
+        addButton(page, "Serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
+        addButton(page, "Sans-serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
+        addButton(page, "Toggle bold text", secondary = true) { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
+        addSectionTitle(page, "Screen orientation")
+        addButton(page, "Portrait", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        addButton(page, "Landscape", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        addButton(page, "Auto (follow device)", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(page, "Screen awake setting")
+        page.addView(Switch(this).apply {
             text = "Keep screen awake while Water Tracker is visible"
             isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
             setOnCheckedChangeListener { _, enabled ->
                 getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
                 applyKeepScreenAwake()
                 toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
             }
         })
-        addSectionTitle(layout, "App updates")
-        layout.addView(Switch(this).apply { text = "Automatic updates"; isChecked = false; isEnabled = false })
-        layout.addView(TextView(this).apply { text = "Automatic updates are disabled. Review changes and permissions consciously, then install updates manually when you choose. This preserves control over app changes and avoids unexpected mobile-data use."; textSize = 13f; setPadding(0, 8, 0, 12) })
-        layout.addView(TextView(this).apply { text = "The screen stays awake while Water Tracker is visible. Normal screen timeout resumes when you leave the app."; textSize = 13f })
-        applyDisplayPreferences(layout)
-        setContentView(ScrollView(this).apply { addView(layout) })
+        addSectionTitle(page, "App updates")
+        page.addView(Switch(this).apply {
+            text = "Automatic updates (disabled)"
+            isChecked = false
+            isEnabled = false
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+        })
+        page.addView(TextView(this).apply {
+            text = "Updates are manual so you can review changes and permissions before installing."
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(83, 112, 130))
+            setPadding(dp(4), dp(6), dp(4), dp(12))
+        })
+        applyDisplayPreferences(page)
+        setContentView(ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setPadding(0, 0, 0, 0)
+            addView(page)
+        })
     }
+
+    private lateinit var waterProgress: android.widget.ProgressBar
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private fun createActionButton(label: String, action: () -> Unit): com.google.android.material.button.MaterialButton =
+        com.google.android.material.button.MaterialButton(this).apply {
+            text = label
+            isAllCaps = false
+            textSize = 15f
+            cornerRadius = dp(16)
+            insetTop = 0
+            insetBottom = 0
+            setTextColor(android.graphics.Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 125, 166))
+            elevation = dp(2).toFloat()
+            setOnClickListener { action() }
+        }
 
     private fun applyThemePreference() {
         val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
@@ -368,18 +484,40 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
     }
 
-    private fun addSectionTitle(parent: LinearLayout, title: String) {
+    private fun addSectionTitle(parent: LinearLayout, title: String, subtitle: String? = null) {
         parent.addView(TextView(this).apply {
             text = title
-            textSize = 19f
-            setPadding(0, 28, 0, 8)
+            textSize = 20f
+            setTextColor(android.graphics.Color.rgb(22, 65, 91))
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(2), dp(22), dp(2), dp(3))
+        })
+        if (subtitle != null) parent.addView(TextView(this).apply {
+            text = subtitle
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(100, 127, 143))
+            setPadding(dp(3), 0, dp(3), dp(8))
         })
     }
 
-    private fun addButton(parent: LinearLayout, label: String, action: () -> Unit) {
-        parent.addView(Button(this).apply {
+    private fun addButton(parent: LinearLayout, label: String, secondary: Boolean = false, action: () -> Unit) {
+        val button = com.google.android.material.button.MaterialButton(this).apply {
             text = label
+            isAllCaps = false
+            textSize = 14f
+            cornerRadius = dp(15)
+            insetTop = dp(2)
+            insetBottom = dp(2)
+            minHeight = dp(50)
+            setTextColor(if (secondary) android.graphics.Color.rgb(24, 91, 121) else android.graphics.Color.WHITE)
+            backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (secondary) android.graphics.Color.rgb(225, 241, 248) else android.graphics.Color.rgb(0, 125, 166)
+            )
             setOnClickListener { action() }
+        }
+        parent.addView(button, LinearLayout.LayoutParams(-1, -2).apply {
+            topMargin = dp(4)
+            bottomMargin = dp(5)
         })
     }
 
@@ -393,9 +531,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun refreshWaterDisplay() {
-        totalText.text = "Today's water: $totalMl ml"
+        totalText.text = "$totalMl ml"
         val percent = ((totalMl * 100) / dailyGoalMl).coerceAtMost(100)
-        progressText.text = "Daily goal: $dailyGoalMl ml  •  $percent% completed"
+        progressText.text = "$percent% of your $dailyGoalMl ml daily goal"
+        if (::waterProgress.isInitialized) waterProgress.progress = percent
     }
 
     private fun todayKey(): String =
