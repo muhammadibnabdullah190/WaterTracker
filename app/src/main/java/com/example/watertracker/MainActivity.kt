@@ -240,7 +240,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
             progressTintList = null
             progressBackgroundTintList = null
-            splitTrack = false
             visibility = android.view.View.VISIBLE
         }
         summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(18)).apply {
