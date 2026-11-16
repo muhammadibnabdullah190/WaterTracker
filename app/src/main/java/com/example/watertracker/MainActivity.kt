@@ -547,7 +547,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         super.onResume()
         applyKeepScreenAwake()
         applyThemePreference()
-        updatePipParams()
         registerThemeSensor()
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
         if (prefs.getBoolean("sleep_theme_enabled", false) &&
