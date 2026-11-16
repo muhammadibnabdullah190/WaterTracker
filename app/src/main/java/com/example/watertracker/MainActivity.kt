@@ -259,15 +259,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         page.addView(locationText)
         page.addView(Switch(this).apply {
-            text = "Save location with water entries"
+            text = "Save location with enteries"
             isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
             setTextColor(android.graphics.Color.rgb(35, 75, 99))
             setOnCheckedChangeListener { _, enabled ->
                 getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("location_tagging", enabled).apply()
                 locationTaggingEnabled = enabled
-                if (enabled && !hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                if (enabled) {
                     locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
-                } else toast(if (enabled) "Location tagging enabled. A location is attached only when available." else "Location tagging disabled.")
+                } else {
+                    toast("Location tagging disabled.")
+                }
             }
         })
         addButton(page, "Manage Location permission in Android Settings", secondary = true) {
