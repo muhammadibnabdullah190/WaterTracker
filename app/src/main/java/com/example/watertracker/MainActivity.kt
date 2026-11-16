@@ -176,6 +176,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         heroContent.addView(heroText)
         hero.addView(heroContent)
         page.addView(hero)
+        page.addView(WaterDropletsView(this), LinearLayout.LayoutParams(-1, dp(34)).apply {
+            bottomMargin = dp(5)
+        })
 
         val summary = com.google.android.material.card.MaterialCardView(this).apply {
             radius = dp(24).toFloat()
@@ -248,7 +251,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
-        addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { checkForAppUpdate() }
+        addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -332,6 +335,38 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         setContentView(root)
         screenDimOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
         blueFilterOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
+
+    private inner class WaterDropletsView(context: Context) : android.view.View(context) {
+        private val dropPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(1).toFloat()
+            color = android.graphics.Color.argb(95, 35, 155, 195)
+        }
+        private val shinePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(1).toFloat()
+            color = android.graphics.Color.argb(65, 255, 255, 255)
+        }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val positions = listOf(0.08f to 0.5f, 0.23f to 0.25f, 0.43f to 0.62f,
+                0.62f to 0.30f, 0.79f to 0.62f, 0.94f to 0.38f)
+            positions.forEachIndexed { index, pair ->
+                val cx = width * pair.first
+                val cy = height * pair.second
+                val radius = dp(if (index % 2 == 0) 7 else 5).toFloat()
+                val path = android.graphics.Path().apply {
+                    moveTo(cx, cy - radius)
+                    cubicTo(cx - radius * 0.45f, cy - radius * 0.15f, cx - radius, cy + radius * 0.35f, cx, cy + radius)
+                    cubicTo(cx + radius, cy + radius * 0.35f, cx + radius * 0.45f, cy - radius * 0.15f, cx, cy - radius)
+                    close()
+                }
+                canvas.drawPath(path, dropPaint)
+                canvas.drawLine(cx - radius * 0.22f, cy - radius * 0.18f, cx - radius * 0.08f, cy + radius * 0.12f, shinePaint)
+            }
+        }
     }
 
     private lateinit var waterProgress: CircularHydrationProgressView
@@ -1228,12 +1263,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addCell(header, "Date", true)
         addCell(header, "Intake", true)
         addCell(header, "Goal", true)
+        addCell(header, "Location", true)
         table.addView(header)
         for (offset in 0..29) {
             val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
             val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
             val label = SimpleDateFormat("dd MMM", Locale.getDefault()).format(cal.time)
             val total = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
+            val dayEntries = runCatching { JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]") }.getOrElse { JSONArray() }
+            val savedLocations = linkedSetOf<String>()
+            for (entryIndex in 0 until dayEntries.length()) {
+                val entry = dayEntries.optJSONObject(entryIndex) ?: continue
+                if (entry.has("latitude") && entry.has("longitude")) {
+                    val lat = entry.optDouble("latitude")
+                    val lon = entry.optDouble("longitude")
+                    if (lat.isFinite() && lon.isFinite()) savedLocations.add(String.format(Locale.US, "%.4f, %.4f", lat, lon))
+                }
+            }
+            val locationLabel = when (savedLocations.size) {
+                0 -> "—"
+                1 -> savedLocations.first()
+                else -> "${savedLocations.size} saved"
+            }
             val completed = total >= dailyGoalMl
             val row = android.widget.TableRow(this).apply {
                 setBackgroundColor(if (offset % 2 == 0) android.graphics.Color.argb(24, 0, 135, 180) else android.graphics.Color.TRANSPARENT)
@@ -1242,6 +1293,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             addCell(row, "$total ml")
             addCell(row, if (completed) "✓ Completed" else "✕ Not completed", true,
                 if (completed) android.graphics.Color.rgb(35, 145, 75) else android.graphics.Color.rgb(205, 55, 55))
+            addCell(row, locationLabel)
             table.addView(row)
             table.addView(android.view.View(this).apply {
                 setBackgroundColor(android.graphics.Color.argb(35, 40, 100, 125))
@@ -1322,7 +1374,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun startVoiceInput() {
         if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
-            toast("Allow Microphone for Water Tracker, then try Voice logging again.")
+            toast("Water Tracker cannot access the microphone. Check Settings → Apps → Water Tracker → Permissions.")
             return
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
