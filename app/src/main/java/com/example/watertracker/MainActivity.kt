@@ -128,11 +128,48 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        applyThemePreference()
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        applyKeepScreenAwake()
-        loadTodayTotal()
-        buildUi()
+        try {
+            applyThemePreference()
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            applyKeepScreenAwake()
+            loadTodayTotal()
+            buildUi()
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                .remove("last_startup_error").apply()
+        } catch (error: Throwable) {
+            val report = android.util.Log.getStackTraceString(error)
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                .putString("last_startup_error", report).apply()
+            showStartupError(report)
+        }
+    }
+
+    private fun showStartupError(report: String) {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(24), dp(20), dp(20))
+        }
+        content.addView(TextView(this).apply {
+            text = "Water Tracker could not finish starting. Your saved entries have not been intentionally cleared. Please copy the diagnostic details and share them with support."
+            textSize = 16f
+            setTextColor(android.graphics.Color.DKGRAY)
+        })
+        content.addView(TextView(this).apply {
+            text = report
+            textSize = 10f
+            setTextColor(android.graphics.Color.DKGRAY)
+            setPadding(0, dp(16), 0, dp(16))
+        })
+        val copy = Button(this).apply {
+            text = "Copy diagnostic details"
+            setOnClickListener {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Water Tracker startup error", report))
+                Toast.makeText(this@MainActivity, "Diagnostic details copied.", Toast.LENGTH_SHORT).show()
+            }
+        }
+        content.addView(copy)
+        setContentView(ScrollView(this).apply { addView(content) })
     }
 
     private fun buildUi() {
