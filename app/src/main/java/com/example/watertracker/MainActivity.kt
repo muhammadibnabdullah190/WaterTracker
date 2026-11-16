@@ -238,14 +238,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 bottomMargin = dp(6)
             }
         }
-        addDashboardButton(dashboardGrid, "Quick Add", ContextCompat.getDrawable(this, R.drawable.ic_quick_add)!!) { showQuickAddOptions() }
+        addDashboardButton(dashboardGrid, "Water Entries", ContextCompat.getDrawable(this, R.drawable.ic_quick_add)!!) { showQuickAddOptions() }
         addDashboardButton(dashboardGrid, "Voice logging", ContextCompat.getDrawable(this, R.drawable.ic_voice)!!) { requestVoice() }
         addDashboardButton(
             dashboardGrid,
             if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging ON" else "Location tagging",
             ContextCompat.getDrawable(this, R.drawable.ic_location)!!
         ) { toggleLocationTagging() }
-        addDashboardButton(dashboardGrid, "Quick Entries", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showQuickEntriesDialog() }
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
@@ -313,6 +312,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         val root = FrameLayout(this)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        root.addView(WaterDropletsView(this), FrameLayout.LayoutParams(-1, -1))
         screenDimOverlay = android.view.View(this).apply {
             setBackgroundColor(android.graphics.Color.BLACK)
             alpha = 0.32f
@@ -335,6 +335,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private lateinit var waterProgress: CircularHydrationProgressView
+
+    private inner class WaterDropletsView(context: Context) : android.view.View(context) {
+        private val outline = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(1.4).toFloat()
+            color = android.graphics.Color.argb(42, 0, 145, 190)
+        }
+        private val shine = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.FILL
+            color = android.graphics.Color.argb(28, 255, 255, 255)
+        }
+        private val positions = listOf(0.08f to 0.20f, 0.91f to 0.28f, 0.16f to 0.53f, 0.84f to 0.62f, 0.07f to 0.82f, 0.94f to 0.91f)
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            positions.forEachIndexed { index, point ->
+                val size = dp(if (index % 2 == 0) 23 else 16).toFloat()
+                val x = width * point.first
+                val y = height * point.second
+                val path = android.graphics.Path().apply {
+                    moveTo(x, y - size)
+                    cubicTo(x - size * 0.12f, y - size * 0.48f, x - size * 0.72f, y + size * 0.18f, x, y + size * 0.55f)
+                    cubicTo(x + size * 0.72f, y + size * 0.18f, x + size * 0.12f, y - size * 0.48f, x, y - size)
+                    close()
+                }
+                canvas.drawPath(path, outline)
+                canvas.drawCircle(x - size * 0.17f, y - size * 0.05f, size * 0.12f, shine)
+            }
+        }
+    }
 
     private inner class CircularHydrationProgressView(context: Context) : android.view.View(context) {
         var max: Int = 100
@@ -835,26 +864,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         grid.addView(button, params)
     }
 
-    private fun showQuickEntriesDialog() {
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(8), dp(16), dp(12))
-        }
-        addButton(content, "Manual water entry", secondary = true) { showManualWaterEntry() }
-        addButton(content, "Undo last entry", secondary = true) { undoLastWaterEntry() }
-        addButton(content, "Reset today's total", secondary = true) {
-            totalMl = 0
-            saveTodayEntries(JSONArray())
-            saveTodayTotal()
-            refreshWaterDisplay()
-            refreshHistoryDisplay()
-        }
-        addButton(content, "View daily history", secondary = true) { showDailyHistory() }
-        content.addView(historyText)
-        AlertDialog.Builder(this).setTitle("Quick Entries").setView(content)
-            .setPositiveButton("Close", null).show()
-    }
-
     private fun showCameraToolsDialog() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1201,35 +1210,52 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun showDailyHistory() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
-        val days = (0..29).map { offset ->
+        val table = android.widget.TableLayout(this).apply {
+            isStretchAllColumns = true
+            setPadding(dp(10), dp(10), dp(10), dp(14))
+        }
+        fun addCell(row: android.widget.TableRow, value: String, bold: Boolean = false, color: Int = android.graphics.Color.rgb(55, 83, 101)) {
+            row.addView(TextView(this).apply {
+                text = value
+                textSize = 12f
+                setTextColor(color)
+                setTypeface(typeface, if (bold) Typeface.BOLD else Typeface.NORMAL)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(7), dp(10), dp(7), dp(10))
+            })
+        }
+        val header = android.widget.TableRow(this).apply { setBackgroundColor(android.graphics.Color.rgb(220, 242, 249)) }
+        addCell(header, "Date", true)
+        addCell(header, "Intake", true)
+        addCell(header, "Goal", true)
+        table.addView(header)
+        for (offset in 0..29) {
             val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
             val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-            val label = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(cal.time)
+            val label = SimpleDateFormat("dd MMM", Locale.getDefault()).format(cal.time)
             val total = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
-            val entries = runCatching { JSONArray(prefs.getString(entriesKey(key), "[]") ?: "[]") }.getOrElse { JSONArray() }
-            val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\\n") { i ->
-                val item = entries.optJSONObject(i) ?: JSONObject()
-                val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
-                val place = if (item.has("latitude")) " (location saved)" else ""
-                "$time — ${item.optInt("amount")} ml$place"
+            val completed = total >= dailyGoalMl
+            val row = android.widget.TableRow(this).apply {
+                setBackgroundColor(if (offset % 2 == 0) android.graphics.Color.argb(24, 0, 135, 180) else android.graphics.Color.TRANSPARENT)
             }
-            "$label • $total ml\\n$detail"
-        }
-        val historyContent = TextView(this).apply {
-            text = days.joinToString("\\n\\n")
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(55, 83, 101))
-            setPadding(dp(18), dp(12), dp(18), dp(16))
+            addCell(row, label)
+            addCell(row, "$total ml")
+            addCell(row, if (completed) "✓ Completed" else "✕ Not completed", true,
+                if (completed) android.graphics.Color.rgb(35, 145, 75) else android.graphics.Color.rgb(205, 55, 55))
+            table.addView(row)
+            table.addView(android.view.View(this).apply {
+                setBackgroundColor(android.graphics.Color.argb(35, 40, 100, 125))
+                layoutParams = android.widget.TableLayout.LayoutParams(-1, dp(1))
+            })
         }
         val scroll = ScrollView(this).apply {
-            addView(historyContent)
+            addView(table)
             layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(440))
         }
-        AlertDialog.Builder(this).setTitle("Water records (last 30 days)")
+        AlertDialog.Builder(this).setTitle("Monthly records • Last 30 days")
             .setView(scroll).setPositiveButton("Close", null).show()
-        applyViewOpacity(historyContent, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+        applyViewOpacity(table, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
-
         private fun requestVoice() {
         if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
             startVoiceInput()
@@ -1248,16 +1274,50 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun showQuickAddOptions() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(12))
+        }
+        addSectionTitle(content, "Quick add")
         val amounts = arrayOf("100 ml", "150 ml", "200 ml", "250 ml", "300 ml", "350 ml", "400 ml", "500 ml", "750 ml")
         val values = intArrayOf(100, 150, 200, 250, 300, 350, 400, 500, 750)
-        AlertDialog.Builder(this)
-            .setTitle("Choose water amount")
-            .setItems(amounts) { _, which ->
-                addWater(values[which])
-                toast("${values[which]} ml added.")
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        val amountGrid = android.widget.GridLayout(this).apply { columnCount = 3; useDefaultMargins = false }
+        values.forEachIndexed { index, amount ->
+            amountGrid.addView(createActionButton(amounts[index]) {
+                addWater(amount)
+                toast("$amount ml added.")
+            }.apply {
+                layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = dp(42)
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(3), dp(3), dp(3), dp(3))
+                }
+            })
+        }
+        content.addView(amountGrid)
+        addSectionTitle(content, "Other entry actions")
+        addButton(content, "Manual water entry", secondary = true) { showManualWaterEntry() }
+        addButton(content, "Undo last entry", secondary = true) { undoLastWaterEntry() }
+        addButton(content, "Reset today's total", secondary = true) {
+            AlertDialog.Builder(this).setTitle("Reset today's total?")
+                .setMessage("This will remove today's saved water entries.")
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Reset") { _, _ ->
+                    totalMl = 0
+                    saveTodayEntries(JSONArray())
+                    saveTodayTotal()
+                    refreshWaterDisplay()
+                    refreshHistoryDisplay()
+                    toast("Today's entries reset.")
+                }.show()
+        }
+        addButton(content, "Monthly records (last 30 days)", secondary = true) { showDailyHistory() }
+        content.addView(historyText)
+        val scroll = ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this).setTitle("Water Entries").setView(scroll)
+            .setPositiveButton("Close", null).show()
+        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
     private fun startVoiceInput() {
