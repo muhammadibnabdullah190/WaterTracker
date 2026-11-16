@@ -215,20 +215,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         page.addView(summary)
         refreshWaterDisplay()
 
-        addSectionTitle(page, "Quick add", "Log water in one tap.")
-        val quickRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 2f
+        val quickAddButton = createActionButton("Quick Add") { showQuickAddOptions() }.apply {
+            layoutParams = LinearLayout.LayoutParams(dp(148), dp(40)).apply {
+                topMargin = dp(2)
+                bottomMargin = dp(5)
+            }
+            icon = createQuickAddGraphic()
+            iconSize = dp(26)
+            iconPadding = dp(7)
+            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            contentDescription = "Quick Add water amount"
         }
-        val add250 = createActionButton("＋ 250 ml") { addWater(250) }.apply {
-            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(6) }
-        }
-        val add500 = createActionButton("＋ 500 ml") { addWater(500) }.apply {
-            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(6) }
-        }
-        quickRow.addView(add250)
-        quickRow.addView(add500)
-        page.addView(quickRow)
+        page.addView(quickAddButton)
 
         val voiceButton = createActionButton("Voice logging") { requestVoice() }.apply {
             layoutParams = LinearLayout.LayoutParams(-1, dp(42)).apply {
@@ -362,6 +360,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
+
+    private fun createQuickAddGraphic(): android.graphics.drawable.Drawable {
+        val glass = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(android.graphics.Color.rgb(235, 253, 255), android.graphics.Color.rgb(92, 202, 229))
+        ).apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setStroke(dp(1), android.graphics.Color.WHITE)
+        }
+        val plus = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.rgb(0, 112, 157))
+            cornerRadius = dp(2).toFloat()
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(glass, plus, plus.mutate())).apply {
+            setLayerInset(1, dp(11), dp(5), dp(11), dp(19))
+            setLayerInset(2, dp(5), dp(11), dp(19), dp(11))
+        }
+    }
 
     private fun createVoiceGraphic(): android.graphics.drawable.Drawable {
         val circle = android.graphics.drawable.GradientDrawable(
@@ -968,16 +984,43 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun requestVoice() {
-        if (hasPermission(Manifest.permission.RECORD_AUDIO)) startVoiceInput()
-        else audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+        if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            startVoiceInput()
+        } else {
+            if (shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
+                AlertDialog.Builder(this)
+                    .setTitle("Microphone access")
+                    .setMessage("Voice logging needs microphone access only while you use this feature. No audio is recorded in the background.")
+                    .setNegativeButton("Not now", null)
+                    .setPositiveButton("Continue") { _, _ -> audioPermission.launch(Manifest.permission.RECORD_AUDIO) }
+                    .show()
+            } else {
+                audioPermission.launch(Manifest.permission.RECORD_AUDIO)
+            }
+        }
+    }
+
+    private fun showQuickAddOptions() {
+        val amounts = arrayOf("100 ml", "150 ml", "200 ml", "250 ml", "300 ml", "350 ml", "400 ml", "500 ml", "750 ml")
+        val values = intArrayOf(100, 150, 200, 250, 300, 350, 400, 500, 750)
+        AlertDialog.Builder(this)
+            .setTitle("Choose water amount")
+            .setItems(amounts) { _, which ->
+                addWater(values[which])
+                toast("${values[which]} ml added.")
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun startVoiceInput() {
         if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
-            toast("Allow Microphone access in Android Settings first."); return
+            toast("Microphone access is off. Allow it in App info → Permissions, then try again.")
+            return
         }
         if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            toast("No speech recognition service is available. Install or enable Google Speech Services."); return
+            toast("Speech recognition is unavailable. Enable or install Google Speech Services, then try again.")
+            return
         }
         speechRecognizer?.destroy()
         speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this))
@@ -1018,9 +1061,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Say: add 250 ml or add 500 ml")
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
         }
-        runCatching { speechRecognizer?.startListening(intent) }
-            .onFailure { toast("Could not start speech recognition: ${it.localizedMessage}") }
+        runCatching {
+            speechRecognizer?.startListening(intent)
+        }.onFailure {
+            speechRecognizer?.destroy()
+            speechRecognizer = null
+            toast("Could not start listening. Check microphone permission and Google Speech Services.")
+        }
     }
 
     private fun updateLocationStatus() {
