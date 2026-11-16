@@ -28,6 +28,10 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.FrameLayout
+import android.net.Uri
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -56,6 +60,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var historyText: TextView
     private var speechRecognizer: SpeechRecognizer? = null
     private var manualEntryTime = Calendar.getInstance()
+    private var locationTaggingEnabled = false
+    private lateinit var screenDimOverlay: android.view.View
+    private lateinit var blueFilterOverlay: android.view.View
     private lateinit var cameraPreview: PreviewView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
@@ -243,7 +250,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         page.addView(previewCard)
 
-        addSectionTitle(page, "Location access", "Optional permission. Choose approximate or precise in Android's permission prompt.")
+        addSectionTitle(page, "Location tagging", "Optionally save the place with each water entry. Location is not collected unless you enable this.")
         locationText = TextView(this).apply {
             text = "Location access has not been requested."
             textSize = 14f
@@ -251,8 +258,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(4), dp(4), dp(8))
         }
         page.addView(locationText)
-        addButton(page, "Request location access", secondary = true) {
-            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+        page.addView(Switch(this).apply {
+            text = "Save location with water entries"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("location_tagging", enabled).apply()
+                locationTaggingEnabled = enabled
+                if (enabled && !hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+                } else toast(if (enabled) "Location tagging enabled. A location is attached only when available." else "Location tagging disabled.")
+            }
+        })
+        addButton(page, "Manage Location permission in Android Settings", secondary = true) {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
         }
         updateLocationStatus()
 
@@ -288,32 +307,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         })
 
         addSectionTitle(page, "Display & accessibility", "Adjust the app's appearance and readability.")
-        addSectionTitle(page, "Screen dim", "Dim this app without changing the phone's system brightness.")
-        val savedDim = getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("screen_dim", 0)
-        val dimLabel = TextView(this).apply {
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(76, 103, 120))
-            text = "Screen dim: $savedDim%"
-        }
-        page.addView(dimLabel)
-        page.addView(android.widget.SeekBar(this).apply {
-            max = 90
-            progress = savedDim
-            contentDescription = "Screen dim level"
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                    dimLabel.text = "Screen dim: $progress%"
-                    if (fromUser) setScreenDim(progress)
-                }
-                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
-            })
+        addSectionTitle(page, "Screen dim", "Turn the app screen dimming on or off.")
+        page.addView(Switch(this).apply {
+            text = "Dim screen"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("screen_dim_enabled", enabled).apply()
+                applyScreenDim(enabled)
+            }
         })
-        addButton(page, "Reset screen dim", secondary = true) {
-            getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putInt("screen_dim", 0).apply()
-            setScreenDim(0)
-            recreate()
-        }
+        addSectionTitle(page, "Blue light filter", "Apply a gentle warm tint while using Water Tracker.")
+        page.addView(Switch(this).apply {
+            text = "Blue light filter"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("blue_filter_enabled", enabled).apply()
+                blueFilterOverlay.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
+            }
+        })
         addButton(page, "Color correction / color filters", secondary = true) {
             toast("Enable color correction in Android accessibility settings.")
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -356,12 +369,33 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(6), dp(4), dp(12))
         })
         applyDisplayPreferences(page)
-        setContentView(ScrollView(this).apply {
+        val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
             setPadding(0, 0, 0, 0)
             addView(page)
-        })
+        }
+        val root = FrameLayout(this)
+        root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+        screenDimOverlay = android.view.View(this).apply {
+            setBackgroundColor(android.graphics.Color.BLACK)
+            alpha = 0.32f
+            visibility = android.view.View.GONE
+            isClickable = false
+            isFocusable = false
+        }
+        blueFilterOverlay = android.view.View(this).apply {
+            setBackgroundColor(android.graphics.Color.rgb(255, 174, 76))
+            alpha = 0.16f
+            visibility = android.view.View.GONE
+            isClickable = false
+            isFocusable = false
+        }
+        root.addView(screenDimOverlay, FrameLayout.LayoutParams(-1, -1))
+        root.addView(blueFilterOverlay, FrameLayout.LayoutParams(-1, -1))
+        setContentView(root)
+        screenDimOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
+        blueFilterOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     private lateinit var waterProgress: android.widget.ProgressBar
@@ -575,9 +609,32 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun addWaterEntry(amount: Int, timestamp: Long) {
         val entries = loadTodayEntries()
-        entries.put(JSONObject().put("amount", amount).put("time", timestamp))
+        val entry = JSONObject().put("amount", amount).put("time", timestamp)
+        entries.put(entry)
         totalMl += amount
         saveTodayEntries(entries)
+        if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false) &&
+            hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            runCatching {
+                LocationServices.getFusedLocationProviderClient(this).lastLocation
+                    .addOnSuccessListener { location ->
+                        if (location != null) {
+                            val latest = loadTodayEntries()
+                            for (i in 0 until latest.length()) {
+                                val saved = latest.optJSONObject(i)
+                                if (saved?.optLong("time") == timestamp) {
+                                    saved.put("latitude", location.latitude)
+                                    saved.put("longitude", location.longitude)
+                                    saved.put("location_accuracy_m", location.accuracy.toInt())
+                                    saveTodayEntries(latest)
+                                    refreshHistoryDisplay()
+                                    break
+                                }
+                            }
+                        }
+                    }
+            }
+        }
         saveTodayTotal()
         refreshWaterDisplay()
         refreshHistoryDisplay()
@@ -634,7 +691,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val lines = (first until entries.length()).reversed().map { index ->
             val item = entries.optJSONObject(index) ?: JSONObject()
             val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
-            "• $time — ${item.optInt("amount")} ml"
+            val place = if (item.has("latitude")) " • location saved" else ""
+            "• $time — ${item.optInt("amount")} ml$place"
         }
         historyText.text = "TODAY'S ENTRIES\n" + lines.joinToString("\n")
     }
@@ -681,7 +739,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\n") { i ->
                 val item = entries.optJSONObject(i) ?: JSONObject()
                 val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
-                "$time — ${item.optInt("amount")} ml"
+                val place = if (item.has("latitude")) " (location saved)" else ""
+                "$time — ${item.optInt("amount")} ml$place"
             }
             "$label • $total ml\n$detail"
         }
@@ -755,12 +814,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    private fun setScreenDim(level: Int) {
-        val safe = level.coerceIn(0, 90)
-        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putInt("screen_dim", safe).apply()
-        val params = window.attributes
-        params.screenBrightness = if (safe == 0) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else (1f - safe / 100f).coerceIn(0.1f, 1f)
-        window.attributes = params
+    private fun applyScreenDim(enabled: Boolean) {
+        if (::screenDimOverlay.isInitialized) screenDimOverlay.visibility =
+            if (enabled) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     private fun startCamera() {
@@ -850,7 +906,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     override fun onResume() {
         super.onResume()
         applyKeepScreenAwake()
-        setScreenDim(getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("screen_dim", 0))
+        applyScreenDim(getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false))
         applyThemePreference()
         registerThemeSensor()
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
