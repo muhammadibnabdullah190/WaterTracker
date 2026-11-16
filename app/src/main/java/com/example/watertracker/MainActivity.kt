@@ -339,7 +339,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private inner class WaterDropletsView(context: Context) : android.view.View(context) {
         private val outline = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(1.4).toFloat()
+            strokeWidth = dp(1).toFloat()
             color = android.graphics.Color.argb(42, 0, 145, 190)
         }
         private val shine = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
