@@ -221,14 +221,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             isIndeterminate = false
             minHeight = dp(16)
             progress = 0
-            progressDrawable = android.graphics.drawable.ClipDrawable(
+            progressDrawable = android.graphics.drawable.LayerDrawable(arrayOf(
                 android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.rgb(0, 145, 190))
+                    setColor(android.graphics.Color.rgb(218, 239, 247))
                     cornerRadius = dp(12).toFloat()
-                }, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL
-            )
-            progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 145, 190))
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(218, 239, 247))
+                },
+                android.graphics.drawable.ClipDrawable(
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(android.graphics.Color.rgb(0, 145, 190))
+                        cornerRadius = dp(12).toFloat()
+                    },
+                    android.view.Gravity.START,
+                    android.graphics.drawable.ClipDrawable.HORIZONTAL
+                )
+            )).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
+            progressTintList = null
+            progressBackgroundTintList = null
+            splitTrack = false
             visibility = android.view.View.VISIBLE
         }
         summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(18)).apply {
