@@ -102,8 +102,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        val granted = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ||
+            hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+            .putBoolean("location_tagging", granted).apply()
+        locationTaggingEnabled = granted
         updateLocationStatus()
-        if (results.values.none { it }) toast("Location access was not granted.")
+        if (!granted) toast("Location access was not granted. Location tagging remains off.")
+        recreate()
     }
     private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) {
@@ -1106,7 +1112,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
-        private fun toggleLocationTagging() {
+    private fun toggleLocationTagging() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
         val enabled = prefs.getBoolean("location_tagging", false)
         if (enabled) {
@@ -1115,10 +1121,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             toast("Location tagging disabled.")
             recreate()
         } else {
-            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
-            locationTaggingEnabled = true
-            prefs.edit().putBoolean("location_tagging", true).apply()
-            recreate()
+            locationPermission.launch(arrayOf(
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ))
         }
     }
 
@@ -1135,12 +1141,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun addWaterEntry(amount: Int, timestamp: Long) {
         val entries = loadTodayEntries()
-        val entry = JSONObject().put("amount", amount).put("time", timestamp)
+        val entryId = java.util.UUID.randomUUID().toString()
+        val entry = JSONObject()
+            .put("entry_id", entryId)
+            .put("amount", amount)
+            .put("time", timestamp)
         entries.put(entry)
         totalMl += amount
         saveTodayEntries(entries)
+
         if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false) &&
-            hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) {
+            (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ||
+                hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))) {
             runCatching {
                 LocationServices.getFusedLocationProviderClient(this).lastLocation
                     .addOnSuccessListener { location ->
@@ -1148,7 +1160,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             val latest = loadTodayEntries()
                             for (i in 0 until latest.length()) {
                                 val saved = latest.optJSONObject(i)
-                                if (saved?.optLong("time") == timestamp) {
+                                if (saved?.optString("entry_id") == entryId) {
                                     saved.put("latitude", location.latitude)
                                     saved.put("longitude", location.longitude)
                                     saved.put("location_accuracy_m", location.accuracy.toInt())
@@ -1157,8 +1169,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                                     break
                                 }
                             }
+                        } else {
+                            runOnUiThread { toast("Entry saved, but location was unavailable. Check that Android Location is enabled and try the next entry.") }
                         }
                     }
+                    .addOnFailureListener {
+                        runOnUiThread { toast("Entry saved, but its location could not be retrieved.") }
+                    }
+            }.onFailure {
+                toast("Entry saved, but its location could not be retrieved.")
             }
         }
         saveTodayTotal()
@@ -1258,54 +1277,67 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
         val table = android.widget.TableLayout(this).apply {
             isStretchAllColumns = true
-            setPadding(dp(10), dp(10), dp(10), dp(14))
+            setPadding(dp(6), dp(8), dp(6), dp(12))
         }
         fun addCell(row: android.widget.TableRow, value: String, bold: Boolean = false, color: Int = android.graphics.Color.rgb(55, 83, 101)) {
             row.addView(TextView(this).apply {
                 text = value
-                textSize = 12f
+                textSize = 11f
                 setTextColor(color)
                 setTypeface(typeface, if (bold) Typeface.BOLD else Typeface.NORMAL)
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(dp(7), dp(10), dp(7), dp(10))
+                setPadding(dp(5), dp(8), dp(5), dp(8))
             })
         }
-        val header = android.widget.TableRow(this).apply { setBackgroundColor(android.graphics.Color.rgb(220, 242, 249)) }
-        addCell(header, "Date", true)
-        addCell(header, "Intake", true)
-        addCell(header, "Goal", true)
-        addCell(header, "Location", true)
+        val header = android.widget.TableRow(this).apply {
+            setBackgroundColor(android.graphics.Color.rgb(220, 242, 249))
+        }
+        listOf("Date", "Time", "Entry", "Location", "Daily goal").forEach { addCell(header, it, true) }
         table.addView(header)
+
         for (offset in 0..29) {
             val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
             val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-            val label = SimpleDateFormat("dd MMM", Locale.getDefault()).format(cal.time)
-            val total = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
-            val dayEntries = runCatching { JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]") }.getOrElse { JSONArray() }
-            val savedLocations = linkedSetOf<String>()
-            for (entryIndex in 0 until dayEntries.length()) {
-                val entry = dayEntries.optJSONObject(entryIndex) ?: continue
-                if (entry.has("latitude") && entry.has("longitude")) {
-                    val lat = entry.optDouble("latitude")
-                    val lon = entry.optDouble("longitude")
-                    if (lat.isFinite() && lon.isFinite()) savedLocations.add(String.format(Locale.US, "%.4f, %.4f", lat, lon))
+            val dateLabel = SimpleDateFormat("dd MMM", Locale.getDefault()).format(cal.time)
+            val dayTotal = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
+            val dayEntries = runCatching {
+                JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]")
+            }.getOrElse { JSONArray() }
+            val completed = dayTotal >= dailyGoalMl
+            val goalLabel = if (completed) "✓ Done" else "✕ Not done"
+            val goalColor = if (completed) android.graphics.Color.rgb(35, 145, 75)
+                else android.graphics.Color.rgb(205, 55, 55)
+
+            if (dayEntries.length() == 0) {
+                val row = android.widget.TableRow(this)
+                addCell(row, dateLabel)
+                addCell(row, "—")
+                addCell(row, "No entries")
+                addCell(row, "—")
+                addCell(row, goalLabel, true, goalColor)
+                table.addView(row)
+            } else {
+                for (entryIndex in 0 until dayEntries.length()) {
+                    val entry = dayEntries.optJSONObject(entryIndex) ?: continue
+                    val row = android.widget.TableRow(this).apply {
+                        setBackgroundColor(if ((offset + entryIndex) % 2 == 0)
+                            android.graphics.Color.argb(24, 0, 135, 180)
+                        else android.graphics.Color.TRANSPARENT)
+                    }
+                    val time = SimpleDateFormat("hh:mm a", Locale.getDefault())
+                        .format(Date(entry.optLong("time")))
+                    val location = if (entry.has("latitude") && entry.has("longitude")) {
+                        String.format(Locale.US, "%.4f, %.4f",
+                            entry.optDouble("latitude"), entry.optDouble("longitude"))
+                    } else "—"
+                    addCell(row, dateLabel)
+                    addCell(row, time)
+                    addCell(row, "${entry.optInt("amount")} ml")
+                    addCell(row, location)
+                    addCell(row, goalLabel, true, goalColor)
+                    table.addView(row)
                 }
             }
-            val locationLabel = when (savedLocations.size) {
-                0 -> "—"
-                1 -> savedLocations.first()
-                else -> "${savedLocations.size} saved"
-            }
-            val completed = total >= dailyGoalMl
-            val row = android.widget.TableRow(this).apply {
-                setBackgroundColor(if (offset % 2 == 0) android.graphics.Color.argb(24, 0, 135, 180) else android.graphics.Color.TRANSPARENT)
-            }
-            addCell(row, label)
-            addCell(row, "$total ml")
-            addCell(row, if (completed) "✓ Completed" else "✕ Not completed", true,
-                if (completed) android.graphics.Color.rgb(35, 145, 75) else android.graphics.Color.rgb(205, 55, 55))
-            addCell(row, locationLabel)
-            table.addView(row)
             table.addView(android.view.View(this).apply {
                 setBackgroundColor(android.graphics.Color.argb(35, 40, 100, 125))
                 layoutParams = android.widget.TableLayout.LayoutParams(-1, dp(1))
@@ -1317,8 +1349,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         AlertDialog.Builder(this).setTitle("Monthly records • Last 30 days")
             .setView(scroll).setPositiveButton("Close", null).show()
-        applyViewOpacity(table, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+        applyViewOpacity(table, prefs.getInt("transparency_level", 75).coerceIn(0, 100))
     }
+
         private fun requestVoice() {
         if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
             startVoiceInput()
