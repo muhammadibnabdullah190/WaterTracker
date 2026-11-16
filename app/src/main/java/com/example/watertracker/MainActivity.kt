@@ -127,8 +127,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        applyThemePreference()
         super.onCreate(savedInstanceState)
+        applyThemePreference()
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         applyKeepScreenAwake()
         loadTodayTotal()
