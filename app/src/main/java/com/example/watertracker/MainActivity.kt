@@ -731,12 +731,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         val column = grid.childCount % 2
         val params = android.widget.GridLayout.LayoutParams(
-            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
-            android.widget.GridLayout.spec(column, 1f)
+            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED),
+            android.widget.GridLayout.spec(column)
         ).apply {
             width = -2
             height = -2
-            gravity = android.view.Gravity.CENTER
             setMargins(dp(3), dp(3), dp(3), dp(3))
         }
         grid.addView(button, params)
