@@ -1,7 +1,6 @@
 package com.example.watertracker
 
 import android.Manifest
-import android.app.Activity
 import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
@@ -20,11 +19,10 @@ import android.hardware.SensorManager
 import android.app.AlertDialog
 import android.app.TimePickerDialog
 import java.util.Calendar
-import android.location.Location
-import android.location.LocationManager
 import android.os.Bundle
 import android.os.Build
 import android.speech.RecognizerIntent
+import android.speech.RecognitionListener
 import android.speech.SpeechRecognizer
 import android.widget.Button
 import android.widget.LinearLayout
@@ -45,6 +43,8 @@ import com.google.mlkit.vision.common.InputImage
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import org.json.JSONArray
+import org.json.JSONObject
 import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity(), SensorEventListener {
@@ -53,6 +53,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private lateinit var totalText: TextView
     private lateinit var progressText: TextView
     private lateinit var locationText: TextView
+    private lateinit var historyText: TextView
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var manualEntryTime = Calendar.getInstance()
     private lateinit var cameraPreview: PreviewView
     private val cameraExecutor = Executors.newSingleThreadExecutor()
     private var cameraStarted = false
@@ -77,8 +80,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startVoiceInput() else toast("Microphone permission was not granted.")
     }
-    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (it) showApproximateLocation() else locationText.text = "Location access: not allowed"
+    private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
+        updateLocationStatus()
+        if (results.values.none { it }) toast("Location access was not granted.")
     }
     private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) {
         if (it != null) toast("Photo captured successfully.")
@@ -196,12 +200,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         quickRow.addView(add250)
         quickRow.addView(add500)
         page.addView(quickRow)
-        addButton(page, "↶  Undo last 250 ml") { addWater(-250) }
+        addButton(page, "＋  Manual water entry", secondary = true) { showManualWaterEntry() }
+        addButton(page, "↶  Undo last entry", secondary = true) { undoLastWaterEntry() }
         addButton(page, "Reset today's total", secondary = true) {
             totalMl = 0
+            saveTodayEntries(JSONArray())
             saveTodayTotal()
             refreshWaterDisplay()
+            refreshHistoryDisplay()
         }
+        historyText = TextView(this).apply {
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(76, 103, 120))
+            setPadding(dp(6), dp(6), dp(6), dp(8))
+        }
+        page.addView(historyText)
+        addButton(page, "View daily history", secondary = true) { showDailyHistory() }
+        refreshHistoryDisplay()
 
         addSectionTitle(page, "Voice logging", "Log your water hands-free.")
         addButton(page, "🎙  Speak to log water") { requestVoice() }
@@ -228,7 +243,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         page.addView(previewCard)
 
-        addSectionTitle(page, "Approximate location", "Optional location information.")
+        addSectionTitle(page, "Location access", "Optional permission. Choose approximate or precise in Android's permission prompt.")
         locationText = TextView(this).apply {
             text = "Location access has not been requested."
             textSize = 14f
@@ -236,10 +251,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(4), dp(4), dp(8))
         }
         page.addView(locationText)
-        addButton(page, "Check approximate location", secondary = true) {
-            if (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) showApproximateLocation()
-            else locationPermission.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+        addButton(page, "Request location access", secondary = true) {
+            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
         }
+        updateLocationStatus()
 
         addSectionTitle(page, "Themes", "Choose how the app adapts to your surroundings.")
         addButton(page, "☾  Muraqaba theme – sleep activity sensor") {
@@ -273,6 +288,32 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         })
 
         addSectionTitle(page, "Display & accessibility", "Adjust the app's appearance and readability.")
+        addSectionTitle(page, "Screen dim", "Dim this app without changing the phone's system brightness.")
+        val savedDim = getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("screen_dim", 0)
+        val dimLabel = TextView(this).apply {
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(76, 103, 120))
+            text = "Screen dim: $savedDim%"
+        }
+        page.addView(dimLabel)
+        page.addView(android.widget.SeekBar(this).apply {
+            max = 90
+            progress = savedDim
+            contentDescription = "Screen dim level"
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                    dimLabel.text = "Screen dim: $progress%"
+                    if (fromUser) setScreenDim(progress)
+                }
+                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            })
+        })
+        addButton(page, "Reset screen dim", secondary = true) {
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putInt("screen_dim", 0).apply()
+            setScreenDim(0)
+            recreate()
+        }
         addButton(page, "Color correction / color filters", secondary = true) {
             toast("Enable color correction in Android accessibility settings.")
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
@@ -525,9 +566,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     private fun addWater(amount: Int) {
-        totalMl = (totalMl + amount).coerceAtLeast(0)
+        if (amount <= 0) {
+            if (amount < 0) undoLastWaterEntry()
+            return
+        }
+        addWaterEntry(amount, System.currentTimeMillis())
+    }
+
+    private fun addWaterEntry(amount: Int, timestamp: Long) {
+        val entries = loadTodayEntries()
+        entries.put(JSONObject().put("amount", amount).put("time", timestamp))
+        totalMl += amount
+        saveTodayEntries(entries)
         saveTodayTotal()
         refreshWaterDisplay()
+        refreshHistoryDisplay()
+    }
+
+    private fun undoLastWaterEntry() {
+        val entries = loadTodayEntries()
+        if (entries.length() == 0) { toast("There is no entry to undo."); return }
+        val last = entries.optJSONObject(entries.length() - 1)
+        totalMl = (totalMl - (last?.optInt("amount", 0) ?: 0)).coerceAtLeast(0)
+        val updated = JSONArray()
+        for (i in 0 until entries.length() - 1) updated.put(entries.getJSONObject(i))
+        saveTodayEntries(updated)
+        saveTodayTotal()
+        refreshWaterDisplay()
+        refreshHistoryDisplay()
+        toast("Last water entry removed.")
     }
 
     private fun refreshWaterDisplay() {
@@ -537,8 +604,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (::waterProgress.isInitialized) waterProgress.progress = percent
     }
 
-    private fun todayKey(): String =
-        SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+    private fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
     private fun loadTodayTotal() {
         val prefs = getSharedPreferences("water_tracker", Context.MODE_PRIVATE)
@@ -547,9 +613,80 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun saveTodayTotal() {
         getSharedPreferences("water_tracker", Context.MODE_PRIVATE).edit()
-            .putString("date", todayKey())
-            .putInt("total_ml", totalMl)
-            .apply()
+            .putString("date", todayKey()).putInt("total_ml", totalMl)
+            .putInt("total_ml_${todayKey()}", totalMl).apply()
+    }
+
+    private fun entriesKey(day: String = todayKey()) = "water_entries_$day"
+    private fun loadTodayEntries(): JSONArray {
+        val raw = getSharedPreferences("water_tracker", MODE_PRIVATE).getString(entriesKey(), "[]") ?: "[]"
+        return runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
+    }
+    private fun saveTodayEntries(entries: JSONArray) {
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString(entriesKey(), entries.toString()).apply()
+    }
+
+    private fun refreshHistoryDisplay() {
+        if (!::historyText.isInitialized) return
+        val entries = loadTodayEntries()
+        if (entries.length() == 0) { historyText.text = "Today's entries: none yet."; return }
+        val first = maxOf(0, entries.length() - 8)
+        val lines = (first until entries.length()).reversed().map { index ->
+            val item = entries.optJSONObject(index) ?: JSONObject()
+            val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
+            "• $time — ${item.optInt("amount")} ml"
+        }
+        historyText.text = "TODAY'S ENTRIES\\n" + lines.joinToString("\\n")
+    }
+
+    private fun showManualWaterEntry() {
+        val input = android.widget.EditText(this).apply {
+            hint = "Amount in ml"; inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText("250"); selectAll()
+        }
+        manualEntryTime = Calendar.getInstance()
+        val timeButton = com.google.android.material.button.MaterialButton(this).apply {
+            isAllCaps = false
+            text = "Time: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(manualEntryTime.time)
+        }
+        timeButton.setOnClickListener {
+            TimePickerDialog(this, { _, hour, minute ->
+                manualEntryTime.set(Calendar.HOUR_OF_DAY, hour)
+                manualEntryTime.set(Calendar.MINUTE, minute)
+                text = "Time: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(manualEntryTime.time)
+            }, manualEntryTime.get(Calendar.HOUR_OF_DAY), manualEntryTime.get(Calendar.MINUTE), false).show()
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0)
+            addView(input); addView(timeButton)
+        }
+        AlertDialog.Builder(this).setTitle("Manual water entry")
+            .setMessage("Enter the amount you drank and select its time.")
+            .setView(content).setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ ->
+                val amount = input.text.toString().toIntOrNull()
+                if (amount == null || amount !in 1..5000) toast("Enter an amount between 1 and 5000 ml.")
+                else { addWaterEntry(amount, manualEntryTime.timeInMillis); toast("$amount ml entry saved.") }
+            }.show()
+    }
+
+    private fun showDailyHistory() {
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val days = (0..6).map { offset ->
+            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
+            val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+            val label = SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(cal.time)
+            val total = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
+            val entries = runCatching { JSONArray(prefs.getString(entriesKey(key), "[]") ?: "[]") }.getOrElse { JSONArray() }
+            val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\\n") { i ->
+                val item = entries.optJSONObject(i) ?: JSONObject()
+                val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
+                "$time — ${item.optInt("amount")} ml"
+            }
+            "$label • $total ml\\n$detail"
+        }
+        AlertDialog.Builder(this).setTitle("Daily water history (last 7 days)")
+            .setMessage(days.joinToString("\\n\\n")).setPositiveButton("Close", null).show()
     }
 
     private fun requestVoice() {
@@ -558,31 +695,72 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun startVoiceInput() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            toast("Speech recognition is not available on this device.")
-            return
+        if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
+            toast("Allow Microphone access in Android Settings first."); return
         }
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            toast("No speech recognition service is available. Install or enable Google Speech Services."); return
+        }
+        speechRecognizer?.destroy()
+        speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this))
+            SpeechRecognizer.createOnDeviceSpeechRecognizer(this) else SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) { toast("Listening… say 250 ml or 500 ml.") }
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onError(error: Int) {
+                speechRecognizer?.destroy(); speechRecognizer = null
+                val message = when (error) {
+                    SpeechRecognizer.ERROR_AUDIO -> "Microphone audio error. Check microphone access."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Allow Microphone access in Android Settings."
+                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech service network error. Check Google Speech Services and mobile data."
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I could not recognise that. Please try again."
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech service is busy. Try again."
+                    SpeechRecognizer.ERROR_SERVER -> "Speech service returned a server error. Update or enable Google Speech Services."
+                    else -> "Speech recognition failed (error $error)."
+                }
+                toast(message)
+            }
+            override fun onResults(results: Bundle?) {
+                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.lowercase(Locale.getDefault()).orEmpty()
+                speechRecognizer?.destroy(); speechRecognizer = null
+                when {
+                    spoken.contains("500") -> addWater(500)
+                    spoken.contains("250") -> addWater(250)
+                    else -> toast("Please say 250 ml or 500 ml. Recognised: $spoken")
+                }
+            }
+            override fun onPartialResults(partialResults: Bundle?) {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Say: add 250 ml or add 500 ml")
         }
-        @Suppress("DEPRECATION")
-        startActivityForResult(intent, 501)
+        runCatching { speechRecognizer?.startListening(intent) }
+            .onFailure { toast("Could not start speech recognition: ${it.localizedMessage}") }
     }
 
-    @Deprecated("Legacy activity result used for speech recognizer compatibility")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == 501 && resultCode == Activity.RESULT_OK) {
-            val spoken = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                ?.firstOrNull()?.lowercase(Locale.getDefault()).orEmpty()
-            when {
-                spoken.contains("500") -> addWater(500)
-                spoken.contains("250") -> addWater(250)
-                else -> toast("Please say 250 ml or 500 ml.")
-            }
+    private fun updateLocationStatus() {
+        val coarse = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val fine = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        locationText.text = when {
+            fine -> "Location access: allowed (precise permission)"
+            coarse -> "Location access: allowed (approximate permission)"
+            else -> "Location access: not allowed"
         }
+    }
+
+    private fun setScreenDim(level: Int) {
+        val safe = level.coerceIn(0, 90)
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putInt("screen_dim", safe).apply()
+        val params = window.attributes
+        params.screenBrightness = if (safe == 0) WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE else (1f - safe / 100f).coerceIn(0.1f, 1f)
+        window.attributes = params
     }
 
     private fun startCamera() {
@@ -639,22 +817,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         recreate()
     }
 
-    @Suppress("MissingPermission")
-    private fun showApproximateLocation() {
-        if (!hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)) return
-        val manager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        val providers = listOf(LocationManager.NETWORK_PROVIDER, LocationManager.GPS_PROVIDER)
-        val location: Location? = providers.asSequence()
-            .filter { provider -> runCatching { manager.isProviderEnabled(provider) }.getOrDefault(false) }
-            .mapNotNull { provider -> runCatching { manager.getLastKnownLocation(provider) }.getOrNull() }
-            .minByOrNull { it.accuracy }
-
-        locationText.text = if (location == null) {
-            "Approximate location: unavailable. Turn on Location and try again."
-        } else {
-            "Approximate location available (accuracy about ${location.accuracy.toInt()} metres)."
-        }
-    }
+    private fun unusedLocationPlaceholder() { updateLocationStatus() }
 
     private fun changeFontSize(delta: Float) {
         val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
@@ -687,6 +850,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     override fun onResume() {
         super.onResume()
         applyKeepScreenAwake()
+        setScreenDim(getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("screen_dim", 0))
         applyThemePreference()
         registerThemeSensor()
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
@@ -721,6 +885,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onDestroy() {
         super.onDestroy()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         cameraExecutor.shutdown()
     }
 }
