@@ -108,8 +108,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val transparentTheme = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(30))
-            setBackgroundColor(if (transparentTheme) android.graphics.Color.argb(225, 224, 244, 250) else android.graphics.Color.rgb(242, 248, 252))
+            setPadding(dp(12), dp(10), dp(12), dp(18))
+            setBackgroundColor(android.graphics.Color.argb(
+                getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(30, 100) * 255 / 100,
+                224, 244, 250
+            ))
         }
 
         val hero = com.google.android.material.card.MaterialCardView(this).apply {
@@ -117,7 +120,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             cardElevation = dp(5).toFloat()
             strokeWidth = 0
             setCardBackgroundColor(if (transparentTheme) android.graphics.Color.argb(218, 13, 92, 153) else android.graphics.Color.rgb(13, 92, 153))
-            layoutParams = LinearLayout.LayoutParams(-1, dp(150)).apply { bottomMargin = dp(18) }
+            layoutParams = LinearLayout.LayoutParams(-1, dp(112)).apply { bottomMargin = dp(10) }
         }
         val heroContent = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -162,7 +165,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         val summaryContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(20))
+            setPadding(dp(14), dp(12), dp(14), dp(14))
         }
         val hydrationHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -286,46 +289,29 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         updateLocationStatus()
 
-        addSectionTitle(page, "Themes", "Choose how the app adapts to your surroundings.")
-        val muraqabaInfo = TextView(this).apply {
-            text = "Awake 0–20: Light  •  Asleep 80–100: Dark  •  21–79: keep previous theme. Uses activity recognition, not the camera."
+        addSectionTitle(page, "Appearance", "Transparent theme with adjustable background transparency.")
+        val transparencyLabel = TextView(this).apply {
             textSize = 12f
             setTextColor(android.graphics.Color.rgb(83, 112, 130))
-            setPadding(dp(4), dp(4), dp(4), dp(8))
+            setPadding(dp(3), dp(2), dp(3), dp(2))
         }
-        page.addView(muraqabaInfo)
-
-        fun themeRow(): LinearLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            weightSum = 4f
+        page.addView(transparencyLabel)
+        val transparencySeek = android.widget.SeekBar(this).apply {
+            max = 70
+            progress = (getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75) - 30).coerceIn(0, 70)
+            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
+                    val level = progress + 30
+                    transparencyLabel.text = "Transparency: $level% opaque"
+                    getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putInt("transparency_level", level).apply()
+                    page.setBackgroundColor(android.graphics.Color.argb(level * 255 / 100, 224, 244, 250))
+                }
+                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
+            })
         }
-        val firstThemeRow = themeRow()
-        addThemeTile(firstThemeRow, "🌙", "Muraqaba") {
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                toast("Muraqaba Theme requires Android 10 or later.")
-            } else if (hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
-                enableSleepActivityTheme()
-            } else {
-                sleepActivityPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-            }
-        }
-        addThemeTile(firstThemeRow, "💡", "Room light") { saveThemeMode("room_light") }
-        addThemeTile(firstThemeRow, "🌦️", "Weather") { showWeatherThemePicker() }
-        addThemeTile(firstThemeRow, "🕒", "Time") { showTimeThemeOptions() }
-        page.addView(firstThemeRow)
-        val secondThemeRow = themeRow()
-        addThemeTile(secondThemeRow, "🌗", "Day–night") { saveThemeMode("day_night") }
-        addThemeTile(secondThemeRow, "🎨", "Light / Dark") { showChoiceThemePicker() }
-        addThemeTile(secondThemeRow, "🏃", "Motion") { saveThemeMode("motion") }
-        addThemeTile(secondThemeRow, "💎", "Transparent") { saveThemeMode("transparent") }
-        page.addView(secondThemeRow)
-        val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
-        page.addView(TextView(this).apply {
-            text = "Current theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}"
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(83, 112, 130))
-            setPadding(dp(4), dp(6), dp(4), dp(10))
-        })
+        page.addView(transparencySeek)
+        transparencyLabel.text = "Transparency: ${transparencySeek.progress + 30}% opaque"
 
         addSectionTitle(page, "Display & accessibility", "Adjust the app's appearance and readability.")
         addSectionTitle(page, "Screen dim", "Turn the app screen dimming on or off.")
@@ -450,38 +436,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
     private fun applyThemePreference() {
-        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
-        val mode = p.getString("theme", "system") ?: "system"
-        val dark = when (mode) {
-            "dark", "choice_dark" -> true
-            "light", "choice_light", "transparent" -> false
-                        "viewing" -> false
-            // Sleep API confidence uses 0–20 for Awake and 80–100 for Asleep.
-            // The 21–79 middle band retains the last decided theme.
-            "muraqaba" -> p.getBoolean("sleep_theme_dark", false)
-            "eye_view" -> false // Legacy setting from older camera-based builds.
-            "time" -> {
-                if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
-                else {
-                    val now = Calendar.getInstance()
-                    val current = now.get(Calendar.HOUR_OF_DAY) * 60 + now.get(Calendar.MINUTE)
-                    val start = p.getInt("time_dark_start", 19 * 60)
-                    val end = p.getInt("time_dark_end", 7 * 60)
-                    if (start == end) p.getBoolean("time_all_day_dark", false)
-                    else if (start < end) current !in start until end
-                    else current >= start || current < end
-                }
-            }
-            "day_night" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 6..17
-            "weather" -> p.getString("weather_condition", "clear") in setOf("cloudy", "rain", "storm", "snow")
-            "room_light" -> p.getBoolean("last_room_dark", false)
-            "motion" -> false
-            else -> {
-                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
-                return
-            }
-        }
-        AppCompatDelegate.setDefaultNightMode(if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("theme", "transparent").apply()
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
     }
 
     private fun saveThemeMode(mode: String) {
@@ -698,7 +654,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun addButton(parent: LinearLayout, label: String, secondary: Boolean = false, action: () -> Unit) {
-        val transparent = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
+        val grid = (parent.getChildAt(parent.childCount - 1) as? android.widget.GridLayout)
+            ?: android.widget.GridLayout(this).apply {
+                columnCount = 2
+                useDefaultMargins = false
+                alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+                rowCount = android.widget.GridLayout.UNDEFINED
+                parent.addView(this, LinearLayout.LayoutParams(-1, -2).apply {
+                    topMargin = dp(2)
+                    bottomMargin = dp(3)
+                })
+            }
+        val transparent = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "transparent") == "transparent"
         val top = if (secondary) android.graphics.Color.rgb(248, 253, 255) else android.graphics.Color.rgb(0, 151, 190)
         val bottom = if (secondary) android.graphics.Color.rgb(205, 231, 243) else android.graphics.Color.rgb(0, 91, 139)
         val button = com.google.android.material.button.MaterialButton(this).apply {
@@ -729,10 +696,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
-        parent.addView(button, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(3)
-            bottomMargin = dp(4)
-        })
+        val column = grid.childCount % 2
+        val params = android.widget.GridLayout.LayoutParams(
+            android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
+            android.widget.GridLayout.spec(column, 1f)
+        ).apply {
+            width = 0
+            height = -2
+            setMargins(dp(3), dp(3), dp(3), dp(3))
+        }
+        grid.addView(button, params)
     }
 
     private fun hasPermission(permission: String): Boolean =
