@@ -653,7 +653,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             TimePickerDialog(this, { _, hour, minute ->
                 manualEntryTime.set(Calendar.HOUR_OF_DAY, hour)
                 manualEntryTime.set(Calendar.MINUTE, minute)
-                text = "Time: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(manualEntryTime.time)
+                timeButton.text = "Time: " + SimpleDateFormat("hh:mm a", Locale.getDefault()).format(manualEntryTime.time)
             }, manualEntryTime.get(Calendar.HOUR_OF_DAY), manualEntryTime.get(Calendar.MINUTE), false).show()
         }
         val content = LinearLayout(this).apply {
