@@ -260,7 +260,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(
             dashboardGrid,
             if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging ON" else "Location tagging",
-            ContextCompat.getDrawable(this, R.drawable.ic_location)
+            ContextCompat.getDrawable(this, R.drawable.ic_location)!!
         ) { toggleLocationTagging() }
         addDashboardButton(dashboardGrid, "Quick Entries", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showQuickEntriesDialog() }
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
