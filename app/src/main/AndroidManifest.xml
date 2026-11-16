@@ -51,7 +51,6 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
-        <activity android:name=".PermissionCenterActivity" android:exported="false" />
 
         <activity
             android:name=".PermissionsRationaleActivity"
