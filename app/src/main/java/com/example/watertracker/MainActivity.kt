@@ -483,7 +483,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
         }, ContextCompat.getMainExecutor(this))
     }
- {
+
+    private fun enableSleepActivityTheme() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
             .putString("theme", "muraqaba")
@@ -493,7 +494,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             .apply()
         applyThemePreference()
         SleepThemeManager.subscribe(this)
-            .addOnSuccessListener { toast("Sleep Activity Theme enabled. Awake ≤20: Light; Asleep ≥80: Dark. Middle values keep the previous theme.") }
+            .addOnSuccessListener { toast("Muraqaba Theme enabled. Awake ≤20: Light; Asleep ≥80: Dark. Middle values keep the previous theme.") }
             .addOnFailureListener { e -> toast("Could not start Sleep API updates: ${e.localizedMessage ?: "Google Play services unavailable"}") }
         recreate()
     }
