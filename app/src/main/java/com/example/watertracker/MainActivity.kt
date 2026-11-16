@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var lastMotionThemeUpdate = 0L
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (it) startCamera() else toast("Camera permission was not granted.")
+        if (it) photoPicker.launch(null) else toast("Camera permission was not granted.")
     }
     private val sleepActivityPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) enableSleepActivityTheme()
