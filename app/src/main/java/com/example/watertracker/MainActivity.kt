@@ -259,7 +259,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         page.addView(locationText)
         page.addView(Switch(this).apply {
-            text = "Save location with enteries"
+            text = "Save location with entries"
             isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
             setTextColor(android.graphics.Color.rgb(35, 75, 99))
             setOnCheckedChangeListener { _, enabled ->
