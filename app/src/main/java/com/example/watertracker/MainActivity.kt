@@ -516,14 +516,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val alpha = opacity.coerceIn(0, 100) * 255 / 100
         fun visit(view: android.view.View) {
             view.background?.mutate()?.alpha = alpha
-            if (view is Switch) {
-                view.thumbTintList = android.content.res.ColorStateList.valueOf(
-                    android.graphics.Color.argb(alpha, 0, 125, 166)
-                )
-                view.trackTintList = android.content.res.ColorStateList.valueOf(
-                    android.graphics.Color.argb((alpha * 0.55f).toInt(), 90, 160, 185)
-                )
-            }
             if (view is android.view.ViewGroup) {
                 for (i in 0 until view.childCount) visit(view.getChildAt(i))
             }
@@ -885,50 +877,79 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
+    private fun createDisplayToggle(
+        label: String,
+        preferenceKey: String,
+        defaultValue: Boolean,
+        onToggle: (Boolean) -> Unit
+    ): Switch {
+        val checked = intArrayOf(android.R.attr.state_checked)
+        val unchecked = intArrayOf()
+        return Switch(this).apply {
+            text = label
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE)
+                .getBoolean(preferenceKey, defaultValue)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            switchMinWidth = dp(58)
+            minHeight = dp(52)
+            setPadding(dp(4), dp(8), dp(8), dp(8))
+            thumbTintList = android.content.res.ColorStateList(
+                arrayOf(checked, unchecked),
+                intArrayOf(
+                    android.graphics.Color.rgb(0, 132, 190),
+                    android.graphics.Color.rgb(235, 243, 247)
+                )
+            )
+            trackTintList = android.content.res.ColorStateList(
+                arrayOf(checked, unchecked),
+                intArrayOf(
+                    android.graphics.Color.rgb(105, 190, 220),
+                    android.graphics.Color.rgb(135, 155, 168)
+                )
+            )
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                    .putBoolean(preferenceKey, enabled).apply()
+                onToggle(enabled)
+            }
+            layoutParams = LinearLayout.LayoutParams(-1, dp(56))
+        }
+    }
+
     private fun showDisplayDialog() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(4), dp(16), dp(12))
         }
         addSectionTitle(content, "Screen dim", "Turn app screen dimming on or off.")
-        content.addView(Switch(this).apply {
-            text = "Dim screen"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("screen_dim_enabled", enabled).apply()
-                applyScreenDim(enabled)
-            }
+        content.addView(createDisplayToggle("Dim screen", "screen_dim_enabled", false) { enabled ->
+            applyScreenDim(enabled)
         })
         addSectionTitle(content, "Blue light filter", "Apply a gentle warm tint while using Water Tracker.")
-        content.addView(Switch(this).apply {
-            text = "Blue light filter"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("blue_filter_enabled", enabled).apply()
-                blueFilterOverlay.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
-            }
+        content.addView(createDisplayToggle("Blue light filter", "blue_filter_enabled", false) { enabled ->
+            blueFilterOverlay.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
         })
         addSectionTitle(content, "Screen orientation")
         addButton(content, "Portrait", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(content, "Landscape", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         addButton(content, "Auto (follow device)", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
         addSectionTitle(content, "Screen awake setting")
-        content.addView(Switch(this).apply {
-            text = "Keep screen awake while Water Tracker is visible"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
-                applyKeepScreenAwake()
-                toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
-            }
+        content.addView(createDisplayToggle(
+            "Keep screen awake while Water Tracker is visible",
+            "keep_screen_awake",
+            true
+        ) { enabled ->
+            applyKeepScreenAwake()
+            toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
         })
-        val scroll = ScrollView(this).apply { addView(content) }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            addView(content)
+        }
         AlertDialog.Builder(this).setTitle("Display settings").setView(scroll)
             .setPositiveButton("Close", null).show()
-        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE)
+            .getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
     private fun showAccessibilityDialog() {
