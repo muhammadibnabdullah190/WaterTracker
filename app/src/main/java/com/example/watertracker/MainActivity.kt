@@ -164,13 +164,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(20))
         }
-        summaryContent.addView(TextView(this).apply {
+        val hydrationHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        hydrationHeader.addView(createSectionGraphic("💧", 42))
+        hydrationHeader.addView(TextView(this).apply {
             text = "TODAY'S HYDRATION"
-            textSize = 12f
+            textSize = 13f
             letterSpacing = 0.12f
             setTextColor(android.graphics.Color.rgb(65, 119, 150))
             setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(10), 0, 0, 0)
         })
+        summaryContent.addView(hydrationHeader)
         totalText = TextView(this).apply {
             textSize = 30f
             setTextColor(android.graphics.Color.rgb(20, 55, 78))
@@ -615,20 +622,75 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         parent.addView(tile)
     }
 
+    private fun createSectionGraphic(emoji: String, size: Int): android.view.View {
+        val graphic = TextView(this).apply {
+            text = emoji
+            textSize = if (size >= 44) 25f else 23f
+            gravity = android.view.Gravity.CENTER
+            setShadowLayer(dp(3).toFloat(), dp(1).toFloat(), dp(2).toFloat(), android.graphics.Color.argb(110, 25, 86, 120))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(android.graphics.Color.rgb(255, 255, 255), android.graphics.Color.rgb(202, 234, 246))
+            ).apply {
+                cornerRadius = dp(14).toFloat()
+                setStroke(dp(1), android.graphics.Color.rgb(213, 235, 244))
+            }
+            contentDescription = "Decorative $emoji graphic"
+        }
+        graphic.layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
+        graphic.elevation = dp(3).toFloat()
+        return graphic
+    }
+
     private fun addSectionTitle(parent: LinearLayout, title: String, subtitle: String? = null) {
-        parent.addView(TextView(this).apply {
-            text = title
-            textSize = 20f
-            setTextColor(android.graphics.Color.rgb(22, 65, 91))
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(2), dp(22), dp(2), dp(3))
-        })
-        if (subtitle != null) parent.addView(TextView(this).apply {
-            text = subtitle
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(100, 127, 143))
-            setPadding(dp(3), 0, dp(3), dp(8))
-        })
+        val graphic = when (title.lowercase(Locale.ROOT)) {
+            "quick add" -> "🥤"
+            "voice logging" -> "🎙️"
+            "camera tools" -> "📸"
+            "location tagging" -> "📍"
+            "display & accessibility" -> "✨"
+            else -> null
+        }
+        if (graphic != null) {
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, dp(18), 0, dp(5))
+            }
+            header.addView(createSectionGraphic(graphic, 48))
+            val labels = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(11), 0, 0, 0)
+            }
+            labels.addView(TextView(this).apply {
+                text = title
+                textSize = 19f
+                setTextColor(android.graphics.Color.rgb(22, 65, 91))
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            if (subtitle != null) labels.addView(TextView(this).apply {
+                text = subtitle
+                textSize = 12f
+                setTextColor(android.graphics.Color.rgb(100, 127, 143))
+                setPadding(0, dp(2), 0, 0)
+            })
+            header.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
+            parent.addView(header)
+        } else {
+            parent.addView(TextView(this).apply {
+                text = title
+                textSize = 20f
+                setTextColor(android.graphics.Color.rgb(22, 65, 91))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(dp(2), dp(22), dp(2), dp(3))
+            })
+            if (subtitle != null) parent.addView(TextView(this).apply {
+                text = subtitle
+                textSize = 13f
+                setTextColor(android.graphics.Color.rgb(100, 127, 143))
+                setPadding(dp(3), 0, dp(3), dp(8))
+            })
+        }
     }
 
     private fun addButton(parent: LinearLayout, label: String, secondary: Boolean = false, action: () -> Unit) {
