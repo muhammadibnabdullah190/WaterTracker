@@ -248,6 +248,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(dashboardGrid, "Quick Entries", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showQuickEntriesDialog() }
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
+        addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
+        addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { checkForAppUpdate() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -981,14 +983,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         AlertDialog.Builder(this).setTitle("Display settings").setView(scroll)
             .setPositiveButton("Close", null).show()
-        addSectionTitle(content, "App updates", "Automatic updates remain off. Check manually when you choose.")
-        content.addView(createDisplayToggle("Automatic updates (OFF)", "auto_updates_enabled", false) { enabled ->
-            if (enabled) {
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("auto_updates_enabled", false).apply()
-                toast("Automatic updates are not supported. Use Check for updates manually.")
-            }
-        })
-        addButton(content, "Check for updates manually", secondary = true) { checkForAppUpdate() }
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE)
             .getInt("transparency_level", 75).coerceIn(0, 100))
     }
