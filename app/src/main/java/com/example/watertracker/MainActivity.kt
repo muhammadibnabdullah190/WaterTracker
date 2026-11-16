@@ -127,9 +127,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         val hero = com.google.android.material.card.MaterialCardView(this).apply {
             radius = dp(26).toFloat()
-            cardElevation = dp(5).toFloat()
+            cardElevation = 0f
             strokeWidth = 0
-            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.rgb(13, 92, 153) else android.graphics.Color.rgb(13, 92, 153))
+            setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
             layoutParams = LinearLayout.LayoutParams(-1, dp(112)).apply { bottomMargin = dp(10) }
         }
         val heroContent = LinearLayout(this).apply {
@@ -167,10 +167,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         val summary = com.google.android.material.card.MaterialCardView(this).apply {
             radius = dp(24).toFloat()
-            cardElevation = dp(3).toFloat()
-            strokeWidth = dp(1)
-            setStrokeColor(android.graphics.Color.rgb(218, 233, 243))
-            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.WHITE else android.graphics.Color.WHITE)
+            cardElevation = 0f
+            strokeWidth = 0
+            setStrokeColor(android.graphics.Color.TRANSPARENT)
+            setCardBackgroundColor(android.graphics.Color.TRANSPARENT)
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(18) }
         }
         val summaryContent = LinearLayout(this).apply {
@@ -220,26 +220,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 topMargin = dp(2)
                 bottomMargin = dp(5)
             }
-            icon = createQuickAddGraphic()
-            iconSize = dp(26)
-            iconPadding = dp(7)
-            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            setCompoundDrawablesRelativeWithIntrinsicBounds(createQuickAddGraphic(), null, null, null)
+            compoundDrawablePadding = dp(7)
             contentDescription = "Quick Add water amount"
         }
         page.addView(quickAddButton)
 
         val voiceButton = createActionButton("Voice logging") { requestVoice() }.apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(42)).apply {
-                topMargin = dp(7)
-                bottomMargin = dp(4)
+            layoutParams = LinearLayout.LayoutParams(dp(148), dp(40)).apply {
+                topMargin = dp(2)
+                bottomMargin = dp(5)
             }
-            icon = createVoiceGraphic()
-            iconSize = dp(30)
-            iconPadding = dp(9)
-            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            setCompoundDrawablesRelativeWithIntrinsicBounds(createVoiceGraphic(), null, null, null)
+            compoundDrawablePadding = dp(7)
             contentDescription = "Voice logging"
         }
         page.addView(voiceButton)
+
+        val locationButton = createActionButton(
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging: ON" else "Location tagging"
+        ) { toggleLocationTagging() }.apply {
+            layoutParams = LinearLayout.LayoutParams(dp(148), dp(40)).apply {
+                topMargin = dp(2)
+                bottomMargin = dp(5)
+            }
+            setCompoundDrawablesRelativeWithIntrinsicBounds(createLocationGraphic(), null, null, null)
+            compoundDrawablePadding = dp(7)
+            contentDescription = "Toggle location tagging"
+        }
+        page.addView(locationButton)
 
         historyText = TextView(this).apply {
             textSize = 13f
@@ -361,19 +370,37 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setOnClickListener { action() }
         }
 
-    private fun createQuickAddGraphic(): android.graphics.drawable.Drawable {
-        val glass = android.graphics.drawable.GradientDrawable(
+    private fun createLocationGraphic(): android.graphics.drawable.Drawable {
+        val outer = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(android.graphics.Color.rgb(235, 253, 255), android.graphics.Color.rgb(92, 202, 229))
-        ).apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setStroke(dp(1), android.graphics.Color.WHITE)
-        }
-        val plus = android.graphics.drawable.GradientDrawable().apply {
+            intArrayOf(android.graphics.Color.rgb(238, 253, 255), android.graphics.Color.rgb(82, 192, 224))
+        ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(dp(1), android.graphics.Color.WHITE) }
+        val pin = android.graphics.drawable.GradientDrawable().apply {
             setColor(android.graphics.Color.rgb(0, 112, 157))
-            cornerRadius = dp(2).toFloat()
+            shape = android.graphics.drawable.GradientDrawable.OVAL
         }
-        return android.graphics.drawable.LayerDrawable(arrayOf(glass, plus, plus.mutate())).apply {
+        val dot = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.WHITE)
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(outer, pin, dot)).apply {
+            setLayerInset(1, dp(8), dp(6), dp(8), dp(9))
+            setLayerInset(2, dp(13), dp(11), dp(13), dp(14))
+        }
+    }
+
+    private fun createQuickAddGraphic(): android.graphics.drawable.Drawable {
+        val outer = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(android.graphics.Color.rgb(245, 255, 255), android.graphics.Color.rgb(86, 197, 226))
+        ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(dp(1), android.graphics.Color.WHITE) }
+        val vertical = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.rgb(0, 105, 151)); cornerRadius = dp(2).toFloat()
+        }
+        val horizontal = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.rgb(0, 105, 151)); cornerRadius = dp(2).toFloat()
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(outer, vertical, horizontal)).apply {
             setLayerInset(1, dp(11), dp(5), dp(11), dp(19))
             setLayerInset(2, dp(5), dp(11), dp(19), dp(11))
         }
@@ -730,22 +757,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
             else cameraPermission.launch(Manifest.permission.CAMERA)
         }
-        addSectionTitle(content, "Location tagging", "Save location with entries")
-        content.addView(locationText)
-        content.addView(Switch(this).apply {
-            text = "Save location with entries"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("location_tagging", enabled).apply()
-                locationTaggingEnabled = enabled
-                if (enabled) {
-                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
-                } else {
-                    toast("Location tagging disabled.")
-                }
-            }
-        })
         updateLocationStatus()
         val scroll = ScrollView(this).apply { addView(content) }
         AlertDialog.Builder(this)
@@ -829,6 +840,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             .setPositiveButton("Close", null)
             .show()
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+    }
+
+    private fun toggleLocationTagging() {
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val enabled = prefs.getBoolean("location_tagging", false)
+        if (enabled) {
+            prefs.edit().putBoolean("location_tagging", false).apply()
+            locationTaggingEnabled = false
+            toast("Location tagging disabled.")
+            recreate()
+        } else {
+            locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION))
+            locationTaggingEnabled = true
+            prefs.edit().putBoolean("location_tagging", true).apply()
+            recreate()
+        }
     }
 
     private fun hasPermission(permission: String): Boolean =
