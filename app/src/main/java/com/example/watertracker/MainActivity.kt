@@ -2,8 +2,6 @@ package com.example.watertracker
 
 import android.Manifest
 import android.app.Activity
-import android.app.AppOpsManager
-import android.app.PictureInPictureParams
 import android.content.Context
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
@@ -24,10 +22,8 @@ import android.app.TimePickerDialog
 import java.util.Calendar
 import android.location.Location
 import android.location.LocationManager
-import android.net.Uri
 import android.os.Bundle
 import android.os.Build
-import android.util.Rational
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.widget.Button
@@ -68,11 +64,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
     private val sleepActivityPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) enableSleepActivityTheme()
-        else toast("Physical Activity permission is required for Sleep Activity Theme. Your current theme is unchanged.")
+        else toast("Physical Activity permission is required for Muraqaba Theme. Your current theme is unchanged.")
     }
     private val sleepThemeChangeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "sleep_activity") {
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "") == "muraqaba") {
                 applyThemePreference()
             }
         }
@@ -167,9 +163,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
         addSectionTitle(layout, "Theme Settings")
-        addButton(layout, "Sleep Activity Sensor Theme – Awake: Light; Asleep: Dark") {
+        addButton(layout, "Muraqaba Theme – Awake: Light; Asleep: Dark") {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                toast("Sleep Activity Theme requires Android 10 or later.")
+                toast("Muraqaba Theme requires Android 10 or later.")
             } else if (hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
                 enableSleepActivityTheme()
             } else {
@@ -177,7 +173,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
         }
         layout.addView(TextView(this).apply {
-            text = "Sleep confidence thresholds: 0–20 = Awake / Light; 80–100 = Asleep / Dark; 21–79 = retain the previous theme. Uses device motion and ambient-light sensors, not the camera. Updates are periodic and may take about 10 minutes to arrive."
+            text = "Muraqaba confidence thresholds: 0–20 = Awake / Light; 80–100 = Asleep / Dark; 21–79 = retain the previous theme. Uses device motion and ambient-light sensors, not the camera. Updates are periodic and may take about 10 minutes to arrive."
             textSize = 13f
             setPadding(0, 4, 0, 12)
         })
@@ -186,15 +182,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(layout, "Time based – configure your theme schedule") { showTimeThemeOptions() }
         addButton(layout, "Day–night based – local day/night cycle") { saveThemeMode("day_night") }
         addButton(layout, "Choice preference – select Light or Dark") { showChoiceThemePicker() }
-        addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }
-        addButton(layout, "Meditation based – calm dark theme") {
-            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-                .putBoolean("meditation_active", true).putString("theme", "meditation").apply()
-            applyThemePreference()
-            toast("Calm dark meditation theme enabled.")
-            recreate()
-        }
-        val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
+        addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }        val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
         layout.addView(TextView(this).apply {
             text = "Selected theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}. Room-light and motion modes use device sensors. Weather mode asks you to select the current condition to avoid background data use."
             textSize = 13f
@@ -218,27 +206,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(layout, "Portrait") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(layout, "Landscape") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
         addButton(layout, "Auto (follow device)") { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-        addSectionTitle(layout, "Picture-in-Picture (PiP)")
-        layout.addView(TextView(this).apply {
-            text = "When enabled and allowed by Android, Water Tracker opens as a small floating window when you leave the app. It shows your daily total and lets you add water."
-            textSize = 13f
-            setPadding(0, 4, 0, 8)
-        })
-        layout.addView(Switch(this).apply {
-            text = "Enable Picture-in-Picture"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("pip_enabled", enabled).apply()
-                updatePipParams()
-                toast(if (enabled) "PiP enabled. Allow it in Android settings too." else "PiP disabled.")
-            }
-        })
-        addButton(layout, "Open Android Picture-in-Picture settings") { openPipSystemSettings() }
-        layout.addView(TextView(this).apply {
-            text = "Privacy reason: PiP is off by default because a floating window can expose your water progress over other apps and may distract you. Turn it on only when you want the tracker to stay visible. Android must also allow PiP for this app."
-            textSize = 13f
-            setPadding(0, 8, 0, 12)
-        })
         addSectionTitle(layout, "Screen awake setting")
         layout.addView(Switch(this).apply {
             text = "Keep screen awake while Water Tracker is visible"
@@ -263,11 +230,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val dark = when (mode) {
             "dark", "choice_dark" -> true
             "light", "choice_light" -> false
-            "meditation" -> true
-            "viewing" -> false
+                        "viewing" -> false
             // Sleep API confidence uses 0–20 for Awake and 80–100 for Asleep.
             // The 21–79 middle band retains the last decided theme.
-            "sleep_activity" -> p.getBoolean("sleep_theme_dark", false)
+            "muraqaba" -> p.getBoolean("sleep_theme_dark", false)
             "eye_view" -> false // Legacy setting from older camera-based builds.
             "time" -> {
                 if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
@@ -517,99 +483,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
         }, ContextCompat.getMainExecutor(this))
     }
-
-    private fun isPipAllowedInSystemSettings(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return false
-        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_PICTURE_IN_PICTURE, android.os.Process.myUid(), packageName)
-        return mode != AppOpsManager.MODE_IGNORED && mode != AppOpsManager.MODE_ERRORED
-    }
-
-    private fun openPipSystemSettings() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            toast("Picture-in-Picture requires Android 8.0 or later.")
-            return
-        }
-        val intent = Intent("android.settings.PICTURE_IN_PICTURE_SETTINGS").apply {
-            data = Uri.parse("package:$packageName")
-        }
-        try {
-            startActivity(intent)
-        } catch (_: Exception) {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-            toast("Open Picture-in-Picture under the app's Special app access settings.")
-        }
-    }
-
-    private fun updatePipParams() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
-        val builder = PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9))
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) builder.setAutoEnterEnabled(enabled && isPipAllowedInSystemSettings())
-        runCatching { setPictureInPictureParams(builder.build()) }
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("pip_enabled", false)
-        if (!enabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        if (!isPipAllowedInSystemSettings()) {
-            toast("Allow Picture-in-Picture for Water Tracker in Android settings first.")
-            return
-        }
-        try {
-            updatePipParams()
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(Rational(16, 9)).build())
-        } catch (_: Exception) { toast("Android could not start Picture-in-Picture. Check the system PiP setting.") }
-    }
-
-    override fun onPictureInPictureModeChanged(
-        isInPictureInPictureMode: Boolean,
-        newConfig: Configuration
-    ) {
-        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
-        if (isInPictureInPictureMode) {
-            showPipContent()
-        } else {
-            buildUi()
-        }
-    }
-
-    private fun showPipContent() {
-        val compact = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 18, 24, 18)
-        }
-        compact.addView(TextView(this).apply {
-            text = "💧 Water Tracker"
-            textSize = 18f
-        })
-        compact.addView(TextView(this).apply {
-            text = "Today: $totalMl ml / $dailyGoalMl ml"
-            textSize = 16f
-        })
-        compact.addView(TextView(this).apply {
-            val percent = ((totalMl * 100) / dailyGoalMl).coerceAtMost(100)
-            text = "$percent% of daily goal"
-            textSize = 14f
-        })
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(Button(this).apply {
-            text = "+250 ml"
-            setOnClickListener { addWater(250); showPipContent() }
-        })
-        actions.addView(Button(this).apply {
-            text = "+500 ml"
-            setOnClickListener { addWater(500); showPipContent() }
-        })
-        compact.addView(actions)
-        setContentView(compact)
-    }
-
-    private fun enableSleepActivityTheme() {
+ {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-            .putString("theme", "sleep_activity")
+            .putString("theme", "muraqaba")
             .putBoolean("sleep_theme_enabled", true)
             .putInt("sleep_awake_threshold", 20)
             .putInt("sleep_asleep_threshold", 80)
