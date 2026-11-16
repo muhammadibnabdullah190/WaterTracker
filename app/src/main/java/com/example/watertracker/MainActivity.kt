@@ -111,6 +111,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (!granted) toast("Location access was not granted. Location tagging remains off.")
         recreate()
     }
+    private val backupFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
+        if (uri != null) writeBackup(uri)
+    }
+    private val restoreFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) confirmRestore(uri)
+    }
     private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
         if (bitmap != null) {
             if (scanningExternalCamera) {
@@ -255,6 +261,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
+        addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showBackupRestoreDialog() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -1230,6 +1237,117 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             getSharedPreferences("water_tracker", MODE_PRIVATE).edit().remove("pending_update_apk").apply()
         } catch (e: Exception) {
             toast("Could not open Android installer: ${e.localizedMessage ?: "Please try again."}")
+        }
+    }
+
+    private fun showBackupRestoreDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Backup and restore")
+            .setMessage("Create a backup file containing your water entries and app settings, or restore them later. Keep the file somewhere safe. It may contain saved location details.")
+            .setItems(arrayOf("Create backup", "Restore from backup")) { _, choice ->
+                if (choice == 0) {
+                    val fileName = "WaterTracker-Backup-" +
+                        SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".json"
+                    backupFileLauncher.launch(fileName)
+                } else {
+                    restoreFileLauncher.launch(arrayOf("application/json", "text/*"))
+                }
+            }
+            .setNegativeButton("Close", null)
+            .show()
+    }
+
+    private fun writeBackup(uri: Uri) {
+        try {
+            val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            val values = JSONObject()
+            for ((key, value) in prefs.all) {
+                if (key == "pending_update_apk") continue
+                val item = JSONObject()
+                when (value) {
+                    is String -> item.put("type", "string").put("value", value)
+                    is Boolean -> item.put("type", "boolean").put("value", value)
+                    is Int -> item.put("type", "int").put("value", value)
+                    is Long -> item.put("type", "long").put("value", value)
+                    is Float -> item.put("type", "float").put("value", value.toDouble())
+                    is Set<*> -> {
+                        val strings = JSONArray()
+                        value.filterIsInstance<String>().forEach { strings.put(it) }
+                        item.put("type", "string_set").put("value", strings)
+                    }
+                    else -> continue
+                }
+                values.put(key, item)
+            }
+            val backup = JSONObject()
+                .put("format", "watertracker-backup")
+                .put("schemaVersion", 1)
+                .put("createdAt", System.currentTimeMillis())
+                .put("preferences", values)
+            contentResolver.openOutputStream(uri, "wt")?.bufferedWriter(Charsets.UTF_8)?.use {
+                it.write(backup.toString(2))
+            } ?: throw IllegalStateException("Could not open the selected backup file.")
+            toast("Backup created successfully.")
+        } catch (e: Exception) {
+            toast("Backup failed: \${e.localizedMessage ?: "Please try another location."}")
+        }
+    }
+
+    private fun confirmRestore(uri: Uri) {
+        AlertDialog.Builder(this)
+            .setTitle("Restore this backup?")
+            .setMessage("Restoring replaces the current Water Tracker entries and settings with the contents of the selected backup. Create a backup of the current data first if you may need it.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Restore") { _, _ -> restoreBackup(uri) }
+            .show()
+    }
+
+    private fun restoreBackup(uri: Uri) {
+        try {
+            val raw = contentResolver.openInputStream(uri)?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }
+                ?: throw IllegalStateException("Could not read the selected backup file.")
+            val backup = JSONObject(raw)
+            if (backup.optString("format") != "watertracker-backup" ||
+                backup.optInt("schemaVersion", -1) != 1) {
+                throw IllegalArgumentException("This is not a supported Water Tracker backup.")
+            }
+            val values = backup.optJSONObject("preferences")
+                ?: throw IllegalArgumentException("The backup does not contain app data.")
+            val editor = getSharedPreferences("water_tracker", MODE_PRIVATE).edit().clear()
+            val keys = values.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                if (key == "pending_update_apk") continue
+                val item = values.optJSONObject(key)
+                    ?: throw IllegalArgumentException("The backup contains an invalid setting.")
+                val value = item.get("value")
+                when (item.optString("type")) {
+                    "string" -> editor.putString(key, value as? String
+                        ?: throw IllegalArgumentException("Invalid text value in backup."))
+                    "boolean" -> editor.putBoolean(key, value as? Boolean
+                        ?: throw IllegalArgumentException("Invalid setting value in backup."))
+                    "int" -> editor.putInt(key, (value as? Number)?.toInt()
+                        ?: throw IllegalArgumentException("Invalid number in backup."))
+                    "long" -> editor.putLong(key, (value as? Number)?.toLong()
+                        ?: throw IllegalArgumentException("Invalid number in backup."))
+                    "float" -> editor.putFloat(key, (value as? Number)?.toFloat()
+                        ?: throw IllegalArgumentException("Invalid number in backup."))
+                    "string_set" -> {
+                        val array = value as? JSONArray
+                            ?: throw IllegalArgumentException("Invalid list in backup.")
+                        val set = linkedSetOf<String>()
+                        for (i in 0 until array.length()) set.add(array.getString(i))
+                        editor.putStringSet(key, set)
+                    }
+                    else -> throw IllegalArgumentException("The backup contains an unknown data type.")
+                }
+            }
+            if (!editor.commit()) throw IllegalStateException("Android could not save the restored data.")
+            loadTodayTotal()
+            recreate()
+            toast("Backup restored successfully.")
+        } catch (e: Exception) {
+            toast("Restore failed: \${e.localizedMessage ?: "The backup could not be read."}")
         }
     }
 
