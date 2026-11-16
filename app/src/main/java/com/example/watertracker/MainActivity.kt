@@ -636,7 +636,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
             "• $time — ${item.optInt("amount")} ml"
         }
-        historyText.text = "TODAY'S ENTRIES\\n" + lines.joinToString("\\n")
+        historyText.text = "TODAY'S ENTRIES\n" + lines.joinToString("\n")
     }
 
     private fun showManualWaterEntry() {
@@ -678,15 +678,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val label = SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(cal.time)
             val total = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
             val entries = runCatching { JSONArray(prefs.getString(entriesKey(key), "[]") ?: "[]") }.getOrElse { JSONArray() }
-            val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\\n") { i ->
+            val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\n") { i ->
                 val item = entries.optJSONObject(i) ?: JSONObject()
                 val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
                 "$time — ${item.optInt("amount")} ml"
             }
-            "$label • $total ml\\n$detail"
+            "$label • $total ml\n$detail"
         }
         AlertDialog.Builder(this).setTitle("Daily water history (last 7 days)")
-            .setMessage(days.joinToString("\\n\\n")).setPositiveButton("Close", null).show()
+            .setMessage(days.joinToString("\n\n")).setPositiveButton("Close", null).show()
     }
 
     private fun requestVoice() {
