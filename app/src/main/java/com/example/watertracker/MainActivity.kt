@@ -210,45 +210,33 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             progressBackgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(225, 239, 246))
             progress = 0
         }
-        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(10)))
+        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(14)).apply {
+            topMargin = dp(3)
+            bottomMargin = dp(4)
+        })
         summary.addView(summaryContent)
         page.addView(summary)
         refreshWaterDisplay()
 
-        val quickAddButton = createActionButton("Quick Add") { showQuickAddOptions() }.apply {
-            layoutParams = LinearLayout.LayoutParams(dp(148), dp(40)).apply {
-                topMargin = dp(2)
-                bottomMargin = dp(5)
+        val dashboardGrid = android.widget.GridLayout(this).apply {
+            columnCount = 2
+            rowCount = android.widget.GridLayout.UNDEFINED
+            useDefaultMargins = false
+            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(6)
             }
-            setCompoundDrawablesRelativeWithIntrinsicBounds(createQuickAddGraphic(), null, null, null)
-            compoundDrawablePadding = dp(7)
-            contentDescription = "Quick Add water amount"
         }
-        page.addView(quickAddButton)
-
-        val voiceButton = createActionButton("Voice logging") { requestVoice() }.apply {
-            layoutParams = LinearLayout.LayoutParams(dp(148), dp(40)).apply {
-                topMargin = dp(2)
-                bottomMargin = dp(5)
-            }
-            setCompoundDrawablesRelativeWithIntrinsicBounds(createVoiceGraphic(), null, null, null)
-            compoundDrawablePadding = dp(7)
-            contentDescription = "Voice logging"
-        }
-        page.addView(voiceButton)
-
-        val locationButton = createActionButton(
-            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging: ON" else "Location tagging"
-        ) { toggleLocationTagging() }.apply {
-            layoutParams = LinearLayout.LayoutParams(dp(148), dp(40)).apply {
-                topMargin = dp(2)
-                bottomMargin = dp(5)
-            }
-            setCompoundDrawablesRelativeWithIntrinsicBounds(createLocationGraphic(), null, null, null)
-            compoundDrawablePadding = dp(7)
-            contentDescription = "Toggle location tagging"
-        }
-        page.addView(locationButton)
+        addDashboardButton(dashboardGrid, "Quick Add", createQuickAddGraphic()) { showQuickAddOptions() }
+        addDashboardButton(dashboardGrid, "Voice logging", createVoiceGraphic()) { requestVoice() }
+        addDashboardButton(
+            dashboardGrid,
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging ON" else "Location tagging",
+            createLocationGraphic()
+        ) { toggleLocationTagging() }
+        addDashboardButton(dashboardGrid, "Quick Entries", createDashboardGlyph("entries")) { showQuickEntriesDialog() }
+        addDashboardButton(dashboardGrid, "Camera Tools", createDashboardGlyph("camera")) { showCameraToolsDialog() }
+        page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
             textSize = 13f
@@ -264,9 +252,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         refreshHistoryDisplay()
         updateLocationStatus()
-        addButton(page, "☷  More water tools, camera & location") {
-            showWaterToolsDialog()
-        }
 
         addSectionTitle(page, "Appearance", "Transparent theme with adjustable background transparency.")
         var pendingTransparency = getSharedPreferences("water_tracker", MODE_PRIVATE)
@@ -369,6 +354,67 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
+
+    private fun addDashboardButton(
+        grid: android.widget.GridLayout,
+        label: String,
+        graphic: android.graphics.drawable.Drawable,
+        action: () -> Unit
+    ) {
+        graphic.setBounds(0, 0, dp(25), dp(25))
+        val button = createActionButton(label, action).apply {
+            layoutParams = android.widget.GridLayout.LayoutParams(
+                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
+                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+            ).apply {
+                width = 0
+                height = dp(44)
+                setMargins(dp(4), dp(4), dp(4), dp(4))
+            }
+            icon = graphic
+            iconSize = dp(25)
+            iconPadding = dp(7)
+            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            textSize = 11f
+            maxWidth = Int.MAX_VALUE
+            elevation = dp(7).toFloat()
+            stateListAnimator = android.animation.StateListAnimator()
+        }
+        grid.addView(button)
+    }
+
+    private fun createDashboardGlyph(kind: String): android.graphics.drawable.Drawable {
+        val background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(android.graphics.Color.rgb(245, 255, 255), android.graphics.Color.rgb(80, 190, 224))
+        ).apply { shape = android.graphics.drawable.GradientDrawable.OVAL; setStroke(dp(1), android.graphics.Color.WHITE) }
+        val ink = android.graphics.Color.rgb(0, 105, 151)
+        val parts = mutableListOf<android.graphics.drawable.Drawable>(background)
+        if (kind == "entries") {
+            for (i in 0..2) {
+                parts.add(android.graphics.drawable.GradientDrawable().apply {
+                    setColor(ink); cornerRadius = dp(2).toFloat()
+                })
+            }
+        } else {
+            parts.add(android.graphics.drawable.GradientDrawable().apply {
+                setColor(ink); cornerRadius = dp(4).toFloat()
+            })
+            parts.add(android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.WHITE); cornerRadius = dp(2).toFloat()
+            })
+        }
+        return android.graphics.drawable.LayerDrawable(parts.toTypedArray()).apply {
+            if (kind == "entries") {
+                setLayerInset(1, dp(8), dp(8), dp(8), dp(17))
+                setLayerInset(2, dp(8), dp(14), dp(8), dp(11))
+                setLayerInset(3, dp(8), dp(20), dp(8), dp(5))
+            } else {
+                setLayerInset(1, dp(5), dp(9), dp(5), dp(8))
+                setLayerInset(2, dp(11), dp(13), dp(11), dp(12))
+            }
+        }
+    }
 
     private fun createLocationGraphic(): android.graphics.drawable.Drawable {
         val outer = android.graphics.drawable.GradientDrawable(
@@ -729,6 +775,45 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         grid.addView(button, params)
     }
 
+    private fun showQuickEntriesDialog() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(12))
+        }
+        addButton(content, "Manual water entry", secondary = true) { showManualWaterEntry() }
+        addButton(content, "Undo last entry", secondary = true) { undoLastWaterEntry() }
+        addButton(content, "Reset today's total", secondary = true) {
+            totalMl = 0
+            saveTodayEntries(JSONArray())
+            saveTodayTotal()
+            refreshWaterDisplay()
+            refreshHistoryDisplay()
+        }
+        addButton(content, "View daily history", secondary = true) { showDailyHistory() }
+        content.addView(historyText)
+        AlertDialog.Builder(this).setTitle("Quick Entries").setView(content)
+            .setPositiveButton("Close", null).show()
+    }
+
+    private fun showCameraToolsDialog() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(8), dp(16), dp(12))
+        }
+        addButton(content, "Scan barcode / QR code") {
+            scanningExternalCamera = true
+            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
+            else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+        addButton(content, "Take a water bottle photo", secondary = true) {
+            scanningExternalCamera = false
+            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
+            else cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+        AlertDialog.Builder(this).setTitle("Camera Tools").setView(content)
+            .setPositiveButton("Close", null).show()
+    }
+
     private fun showWaterToolsDialog() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1050,8 +1135,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         speechRecognizer?.destroy()
-        speechRecognizer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(this))
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(this) else SpeechRecognizer.createSpeechRecognizer(this)
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) { toast("Listening… say 250 ml or 500 ml.") }
             override fun onBeginningOfSpeech() {}
@@ -1062,7 +1146,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 speechRecognizer?.destroy(); speechRecognizer = null
                 val message = when (error) {
                     SpeechRecognizer.ERROR_AUDIO -> "Microphone audio error. Check microphone access."
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Allow Microphone access in Android Settings."
+                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "The speech service cannot access the microphone. Check Microphone permission for both Water Tracker and Google Speech Services in Android Settings."
                     SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech service network error. Check Google Speech Services and mobile data."
                     SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I could not recognise that. Please try again."
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech service is busy. Try again."
@@ -1090,6 +1174,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Say: add 250 ml or add 500 ml")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
+            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
         runCatching {
             speechRecognizer?.startListening(intent)
