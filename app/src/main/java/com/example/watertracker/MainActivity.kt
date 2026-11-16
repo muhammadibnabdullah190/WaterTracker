@@ -221,21 +221,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             isIndeterminate = false
             minHeight = dp(16)
             progress = 0
-            progressDrawable = android.graphics.drawable.LayerDrawable(arrayOf(
+            progressDrawable = android.graphics.drawable.ClipDrawable(
                 android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.rgb(218, 239, 247))
+                    setColor(android.graphics.Color.rgb(0, 145, 190))
                     cornerRadius = dp(12).toFloat()
-                },
-                android.graphics.drawable.ClipDrawable(
-                    android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.rgb(0, 145, 190))
-                        cornerRadius = dp(12).toFloat()
-                    }, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL
-                )
-            )).apply {
-                setId(0, android.R.id.background)
-                setId(1, android.R.id.progress)
-            }
+                }, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL
+            )
+            progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 145, 190))
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(218, 239, 247))
             visibility = android.view.View.VISIBLE
         }
         summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(18)).apply {
@@ -264,6 +257,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         ) { toggleLocationTagging() }
         addDashboardButton(dashboardGrid, "Quick Entries", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showQuickEntriesDialog() }
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
+        addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -314,8 +308,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             toast("Theme changes saved.")
         }
 
-        addButton(page, "⚙  Display & accessibility settings", secondary = true) {
-            showDisplayAccessibilityDialog()
+        addButton(page, "♿  Accessibility settings", secondary = true) {
+            showAccessibilityDialog()
         }
         applyDisplayPreferences(page)
         applyViewOpacity(page, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
@@ -880,12 +874,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
-    private fun showDisplayAccessibilityDialog() {
+    private fun showDisplayDialog() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(4), dp(16), dp(12))
         }
-        addSectionTitle(content, "Screen dim", "Turn the app screen dimming on or off.")
+        addSectionTitle(content, "Screen dim", "Turn app screen dimming on or off.")
         content.addView(Switch(this).apply {
             text = "Dim screen"
             isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)
@@ -905,19 +899,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 blueFilterOverlay.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
             }
         })
-        addButton(content, "Color correction / color filters", secondary = true) {
-            toast("Enable color correction in Android accessibility settings.")
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-        }
-        addSectionTitle(content, "Font size")
-        addButton(content, "Smaller font", secondary = true) { changeFontSize(-0.1f) }
-        addButton(content, "Larger font", secondary = true) { changeFontSize(0.1f) }
-        addButton(content, "Reset font size", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
-        addSectionTitle(content, "Font style")
-        addButton(content, "Default font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
-        addButton(content, "Serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
-        addButton(content, "Sans-serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
-        addButton(content, "Toggle bold text", secondary = true) { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
         addSectionTitle(content, "Screen orientation")
         addButton(content, "Portrait", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
         addButton(content, "Landscape", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
@@ -933,29 +914,38 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
             }
         })
-        addSectionTitle(content, "App updates")
-        content.addView(Switch(this).apply {
-            text = "Automatic updates (disabled)"
-            isChecked = false
-            isEnabled = false
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-        })
-        content.addView(TextView(this).apply {
-            text = "Updates are manual so you can review changes and permissions before installing."
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(83, 112, 130))
-            setPadding(dp(4), dp(6), dp(4), dp(12))
-        })
         val scroll = ScrollView(this).apply { addView(content) }
-        AlertDialog.Builder(this)
-            .setTitle("Display & accessibility")
-            .setView(scroll)
-            .setPositiveButton("Close", null)
-            .show()
+        AlertDialog.Builder(this).setTitle("Display settings").setView(scroll)
+            .setPositiveButton("Close", null).show()
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
-    private fun toggleLocationTagging() {
+    private fun showAccessibilityDialog() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(4), dp(16), dp(12))
+        }
+        addSectionTitle(content, "Color and visual accessibility")
+        addButton(content, "Color correction / color filters", secondary = true) {
+            toast("Enable color correction in Android accessibility settings.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        addSectionTitle(content, "Font size")
+        addButton(content, "Smaller font", secondary = true) { changeFontSize(-0.1f) }
+        addButton(content, "Larger font", secondary = true) { changeFontSize(0.1f) }
+        addButton(content, "Reset font size", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
+        addSectionTitle(content, "Font style")
+        addButton(content, "Default font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
+        addButton(content, "Serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
+        addButton(content, "Sans-serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
+        addButton(content, "Toggle bold text", secondary = true) { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
+        val scroll = ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this).setTitle("Accessibility settings").setView(scroll)
+            .setPositiveButton("Close", null).show()
+        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+    }
+
+        private fun toggleLocationTagging() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
         val enabled = prefs.getBoolean("location_tagging", false)
         if (enabled) {
@@ -1105,25 +1095,36 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun showDailyHistory() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
-        val days = (0..6).map { offset ->
+        val days = (0..29).map { offset ->
             val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
             val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-            val label = SimpleDateFormat("EEE, dd MMM", Locale.getDefault()).format(cal.time)
+            val label = SimpleDateFormat("EEE, dd MMM yyyy", Locale.getDefault()).format(cal.time)
             val total = if (key == todayKey()) totalMl else prefs.getInt("total_ml_$key", 0)
             val entries = runCatching { JSONArray(prefs.getString(entriesKey(key), "[]") ?: "[]") }.getOrElse { JSONArray() }
-            val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\n") { i ->
+            val detail = if (entries.length() == 0) "No saved entries" else (0 until entries.length()).joinToString("\\n") { i ->
                 val item = entries.optJSONObject(i) ?: JSONObject()
                 val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
                 val place = if (item.has("latitude")) " (location saved)" else ""
                 "$time — ${item.optInt("amount")} ml$place"
             }
-            "$label • $total ml\n$detail"
+            "$label • $total ml\\n$detail"
         }
-        AlertDialog.Builder(this).setTitle("Daily water history (last 7 days)")
-            .setMessage(days.joinToString("\n\n")).setPositiveButton("Close", null).show()
+        val historyContent = TextView(this).apply {
+            text = days.joinToString("\\n\\n")
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(55, 83, 101))
+            setPadding(dp(18), dp(12), dp(18), dp(16))
+        }
+        val scroll = ScrollView(this).apply {
+            addView(historyContent)
+            layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(440))
+        }
+        AlertDialog.Builder(this).setTitle("Water records (last 30 days)")
+            .setView(scroll).setPositiveButton("Close", null).show()
+        applyViewOpacity(historyContent, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
-    private fun requestVoice() {
+        private fun requestVoice() {
         if (hasPermission(Manifest.permission.RECORD_AUDIO)) {
             startVoiceInput()
         } else {
