@@ -332,7 +332,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         blueFilterOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
     }
 
-    private lateinit var waterProgress: android.widget.ProgressBar
+    private lateinit var waterProgress: CircularHydrationProgressView
 
     private inner class CircularHydrationProgressView(context: Context) : android.view.View(context) {
         var max: Int = 100
