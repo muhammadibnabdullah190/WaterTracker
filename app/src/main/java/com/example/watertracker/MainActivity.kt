@@ -216,34 +216,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(0, 0, 0, dp(14))
         }
         summaryContent.addView(progressText)
-        waterProgress = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+        waterProgress = CircularHydrationProgressView(this).apply {
             max = 100
-            isIndeterminate = false
-            minHeight = dp(16)
             progress = 0
-            progressDrawable = android.graphics.drawable.LayerDrawable(arrayOf(
-                android.graphics.drawable.GradientDrawable().apply {
-                    setColor(android.graphics.Color.rgb(218, 239, 247))
-                    cornerRadius = dp(12).toFloat()
-                },
-                android.graphics.drawable.ClipDrawable(
-                    android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.rgb(0, 145, 190))
-                        cornerRadius = dp(12).toFloat()
-                    },
-                    android.view.Gravity.START,
-                    android.graphics.drawable.ClipDrawable.HORIZONTAL
-                )
-            )).apply {
-                setId(0, android.R.id.background)
-                setId(1, android.R.id.progress)
-            }
-            progressTintList = null
-            progressBackgroundTintList = null
-            visibility = android.view.View.VISIBLE
         }
-        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(18)).apply {
-            topMargin = dp(5)
+        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(dp(112), dp(112)).apply {
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            topMargin = dp(8)
             bottomMargin = dp(8)
         })
         summary.addView(summaryContent)
@@ -354,6 +333,50 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private lateinit var waterProgress: android.widget.ProgressBar
+
+    private inner class CircularHydrationProgressView(context: Context) : android.view.View(context) {
+        var max: Int = 100
+        var progress: Int = 0
+            set(value) { field = value.coerceIn(0, max); invalidate() }
+        private val track = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(10).toFloat()
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            color = android.graphics.Color.rgb(218, 239, 247)
+        }
+        private val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(10).toFloat()
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            color = android.graphics.Color.rgb(0, 145, 190)
+        }
+        private val label = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(20, 75, 102)
+            textAlign = android.graphics.Paint.Align.CENTER
+            textSize = dp(23).toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        private val subLabel = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(83, 112, 130)
+            textAlign = android.graphics.Paint.Align.CENTER
+            textSize = dp(11).toFloat()
+        }
+        override fun onDraw(canvas: android.graphics.Canvas) {
+            super.onDraw(canvas)
+            val side = minOf(width, height).toFloat()
+            val inset = track.strokeWidth / 2f + dp(3)
+            val rect = android.graphics.RectF(
+                (width - side) / 2f + inset, (height - side) / 2f + inset,
+                (width + side) / 2f - inset, (height + side) / 2f - inset
+            )
+            canvas.drawArc(rect, -90f, 360f, false, track)
+            canvas.drawArc(rect, -90f, 360f * progress / max.coerceAtLeast(1), false, fill)
+            val centerX = width / 2f
+            val centerY = height / 2f
+            canvas.drawText("$progress%", centerX, centerY + dp(1).toFloat(), label)
+            canvas.drawText("of daily goal", centerX, centerY + dp(19).toFloat(), subLabel)
+        }
+    }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
@@ -516,6 +539,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val alpha = opacity.coerceIn(0, 100) * 255 / 100
         fun visit(view: android.view.View) {
             view.background?.mutate()?.alpha = alpha
+            if (view is Switch) {
+                val thumbAlpha = alpha.coerceIn(0, 255)
+                val trackAlpha = (thumbAlpha * 0.55f).toInt()
+                view.thumbTintList = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.argb(thumbAlpha, 0, 125, 166)
+                )
+                view.trackTintList = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.argb(trackAlpha, 90, 160, 185)
+                )
+            }
             if (view is android.view.ViewGroup) {
                 for (i in 0 until view.childCount) visit(view.getChildAt(i))
             }
@@ -948,8 +981,55 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         AlertDialog.Builder(this).setTitle("Display settings").setView(scroll)
             .setPositiveButton("Close", null).show()
+        addSectionTitle(content, "App updates", "Automatic updates remain off. Check manually when you choose.")
+        content.addView(createDisplayToggle("Automatic updates (OFF)", "auto_updates_enabled", false) { enabled ->
+            if (enabled) {
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("auto_updates_enabled", false).apply()
+                toast("Automatic updates are not supported. Use Check for updates manually.")
+            }
+        })
+        addButton(content, "Check for updates manually", secondary = true) { checkForAppUpdate() }
         applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE)
             .getInt("transparency_level", 75).coerceIn(0, 100))
+    }
+
+    private fun checkForAppUpdate() {
+        toast("Checking the latest verified Water Tracker build…")
+        Thread {
+            try {
+                val connection = java.net.URL("https://api.github.com/repos/muhammadibnabdullah190/WaterTracker/releases/latest")
+                    .openConnection() as java.net.HttpURLConnection
+                connection.connectTimeout = 10000
+                connection.readTimeout = 10000
+                connection.setRequestProperty("Accept", "application/vnd.github+json")
+                connection.setRequestProperty("User-Agent", "WaterTracker-Android")
+                val code = connection.responseCode
+                if (code != 200) throw IllegalStateException(if (code == 404) "No published verified release is available yet." else "GitHub returned HTTP $code.")
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val release = JSONObject(body)
+                val assets = release.optJSONArray("assets") ?: JSONArray()
+                var apkUrl: String? = null
+                for (i in 0 until assets.length()) {
+                    val asset = assets.optJSONObject(i) ?: continue
+                    if (asset.optString("name") == "app-debug.apk") {
+                        apkUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
+                        break
+                    }
+                }
+                val downloadUrl = apkUrl
+                runOnUiThread {
+                    if (downloadUrl == null) toast("Latest release has no APK attached. Please try again later.")
+                    else {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(downloadUrl))
+                        try { startActivity(intent) }
+                        catch (_: Exception) { toast("Unable to open the verified APK download.") }
+                    }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please try again later."}") }
+            }
+        }.start()
     }
 
     private fun showAccessibilityDialog() {
