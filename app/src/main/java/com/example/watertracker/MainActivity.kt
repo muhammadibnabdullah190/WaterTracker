@@ -280,7 +280,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         updateLocationStatus()
 
         addSectionTitle(page, "Themes", "Choose how the app adapts to your surroundings.")
-        addButton(page, "☾  Muraqaba theme – sleep activity sensor") {
+        val muraqabaInfo = TextView(this).apply {
+            text = "Awake 0–20: Light  •  Asleep 80–100: Dark  •  21–79: keep previous theme. Uses activity recognition, not the camera."
+            textSize = 12f
+            setTextColor(android.graphics.Color.rgb(83, 112, 130))
+            setPadding(dp(4), dp(4), dp(4), dp(8))
+        }
+        page.addView(muraqabaInfo)
+
+        fun themeRow(): LinearLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 4f
+        }
+        val firstThemeRow = themeRow()
+        addThemeTile(firstThemeRow, "🌙", "Muraqaba") {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                 toast("Muraqaba Theme requires Android 10 or later.")
             } else if (hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
@@ -289,20 +302,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 sleepActivityPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
             }
         }
-        val muraqabaInfo = TextView(this).apply {
-            text = "Awake 0–20: Light  •  Asleep 80–100: Dark  •  21–79: keep previous theme. Uses activity recognition, not the camera."
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(83, 112, 130))
-            setPadding(dp(4), dp(4), dp(4), dp(10))
-        }
-        page.addView(muraqabaInfo)
-        addButton(page, "Room light – ambient light sensor", secondary = true) { saveThemeMode("room_light") }
-        addButton(page, "Weather based – choose current weather", secondary = true) { showWeatherThemePicker() }
-        addButton(page, "Time based – configure schedule", secondary = true) { showTimeThemeOptions() }
-        addButton(page, "Day–night based", secondary = true) { saveThemeMode("day_night") }
-        addButton(page, "Choice preference – Light or Dark", secondary = true) { showChoiceThemePicker() }
-        addButton(page, "Motion detection based", secondary = true) { saveThemeMode("motion") }
-        addButton(page, "✨  Transparent Theme – glass style", secondary = true) { saveThemeMode("transparent") }
+        addThemeTile(firstThemeRow, "💡", "Room light") { saveThemeMode("room_light") }
+        addThemeTile(firstThemeRow, "🌦️", "Weather") { showWeatherThemePicker() }
+        addThemeTile(firstThemeRow, "🕒", "Time") { showTimeThemeOptions() }
+        page.addView(firstThemeRow)
+        val secondThemeRow = themeRow()
+        addThemeTile(secondThemeRow, "🌗", "Day–night") { saveThemeMode("day_night") }
+        addThemeTile(secondThemeRow, "🎨", "Light / Dark") { showChoiceThemePicker() }
+        addThemeTile(secondThemeRow, "🏃", "Motion") { saveThemeMode("motion") }
+        addThemeTile(secondThemeRow, "💎", "Transparent") { saveThemeMode("transparent") }
+        page.addView(secondThemeRow)
         val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
         page.addView(TextView(this).apply {
             text = "Current theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}"
@@ -562,6 +571,48 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+    }
+
+    private fun addThemeTile(parent: LinearLayout, graphic: String, label: String, action: () -> Unit) {
+        val tile = com.google.android.material.card.MaterialCardView(this).apply {
+            radius = dp(16).toFloat()
+            cardElevation = dp(4).toFloat()
+            strokeWidth = dp(1)
+            setStrokeColor(android.graphics.Color.rgb(211, 231, 241))
+            setCardBackgroundColor(android.graphics.Color.rgb(239, 248, 252))
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(88), 1f).apply {
+                setMargins(dp(3), dp(3), dp(3), dp(7))
+            }
+        }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(2), dp(5), dp(2), dp(5))
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(android.graphics.Color.rgb(255, 255, 255), android.graphics.Color.rgb(220, 240, 249))
+            ).apply { cornerRadius = dp(16).toFloat() }
+        }
+        content.addView(TextView(this).apply {
+            text = graphic
+            textSize = 27f
+            gravity = android.view.Gravity.CENTER
+            setShadowLayer(dp(3).toFloat(), dp(1).toFloat(), dp(2).toFloat(), android.graphics.Color.argb(90, 35, 89, 120))
+            contentDescription = "$label theme graphic"
+        })
+        content.addView(TextView(this).apply {
+            text = label
+            textSize = 10.5f
+            gravity = android.view.Gravity.CENTER
+            setTextColor(android.graphics.Color.rgb(31, 76, 101))
+            setTypeface(typeface, Typeface.BOLD)
+            maxLines = 1
+        })
+        tile.addView(content)
+        parent.addView(tile)
     }
 
     private fun addSectionTitle(parent: LinearLayout, title: String, subtitle: String? = null) {
