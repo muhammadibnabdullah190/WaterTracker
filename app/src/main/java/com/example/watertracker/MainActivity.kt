@@ -230,6 +230,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         quickRow.addView(add500)
         page.addView(quickRow)
 
+        val voiceButton = createActionButton("Voice logging") { requestVoice() }.apply {
+            layoutParams = LinearLayout.LayoutParams(-1, dp(42)).apply {
+                topMargin = dp(7)
+                bottomMargin = dp(4)
+            }
+            icon = createVoiceGraphic()
+            iconSize = dp(30)
+            iconPadding = dp(9)
+            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            contentDescription = "Voice logging"
+        }
+        page.addView(voiceButton)
+
         historyText = TextView(this).apply {
             textSize = 13f
             setTextColor(android.graphics.Color.rgb(76, 103, 120))
@@ -349,6 +362,33 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
+
+    private fun createVoiceGraphic(): android.graphics.drawable.Drawable {
+        val circle = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(android.graphics.Color.rgb(235, 252, 255), android.graphics.Color.rgb(89, 194, 222))
+        ).apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setStroke(dp(1), android.graphics.Color.WHITE)
+        }
+        val microphone = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(android.graphics.Color.rgb(0, 104, 158), android.graphics.Color.rgb(0, 190, 190))
+        ).apply { cornerRadius = dp(7).toFloat() }
+        val stem = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.rgb(0, 104, 158))
+            cornerRadius = dp(2).toFloat()
+        }
+        val base = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.rgb(0, 104, 158))
+            cornerRadius = dp(3).toFloat()
+        }
+        return android.graphics.drawable.LayerDrawable(arrayOf(circle, microphone, stem, base)).apply {
+            setLayerInset(1, dp(14), dp(7), dp(14), dp(14))
+            setLayerInset(2, dp(19), dp(23), dp(19), dp(9))
+            setLayerInset(3, dp(13), dp(29), dp(13), dp(7))
+        }
+    }
 
     private fun applyViewOpacity(root: android.view.View, opacity: Int) {
         val alpha = opacity.coerceIn(0, 100) * 255 / 100
@@ -663,8 +703,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         addButton(content, "View daily history", secondary = true) { showDailyHistory() }
         content.addView(historyText)
-        addSectionTitle(content, "Voice logging")
-        addButton(content, "🎙  Speak to log water") { requestVoice() }
         addSectionTitle(content, "Camera tools")
         addButton(content, "▦  Scan barcode / QR code") {
             scanningExternalCamera = true
@@ -692,9 +730,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
         })
-        addButton(content, "Manage Location permission in Android Settings", secondary = true) {
-            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-        }
         updateLocationStatus()
         val scroll = ScrollView(this).apply { addView(content) }
         AlertDialog.Builder(this)
