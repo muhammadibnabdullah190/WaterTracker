@@ -1028,22 +1028,122 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
                 val downloadUrl = apkUrl ?: throw IllegalStateException("The latest GitHub release does not contain app-debug.apk.")
-                runOnUiThread { toast("Latest release found. Downloading update…") }
+                val releaseName = release.optString("name").takeIf { it.isNotBlank() } ?: release.optString("tag_name")
+                val notes = release.optString("body").trim()
+                runOnUiThread { showUpdateConsentDialog(releaseName, notes, downloadUrl) }
+            } catch (e: Exception) {
+                runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please try again later."}") }
+            }
+        }.start()
+    }
+
+    private fun showUpdateConsentDialog(releaseName: String, notes: String, downloadUrl: String) {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        content.addView(TextView(this).apply {
+            text = "An update is available: $releaseName"
+            textSize = 17f
+            setTextColor(android.graphics.Color.rgb(25, 75, 100))
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        val updateItems = if (notes.isNotBlank()) {
+            notes.lines().map { it.trim() }
+                .filter { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("<!--") }
+                .map { it.removePrefix("- ").removePrefix("* ").removePrefix("• ").trim() }
+                .filter { it.isNotBlank() }
+        } else {
+            listOf(
+                "Improved individual water-entry records and location tagging.",
+                "Monthly records now show each entry separately with its own time and location.",
+                "Daily goal completion is clearly marked.",
+                "General app stability and usability improvements."
+            )
+        }
+        content.addView(TextView(this).apply {
+            text = "Updates included:\n" + updateItems.joinToString("\n") { "• $it" }
+            textSize = 14f
+            setTextColor(android.graphics.Color.rgb(55, 83, 101))
+            setPadding(0, dp(12), 0, dp(14))
+        })
+        val consent = android.widget.CheckBox(this).apply {
+            text = "I manually and consciously allow app updates."
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            isChecked = false
+        }
+        content.addView(consent)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Water Tracker update")
+            .setView(content)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Done", null)
+            .create()
+        dialog.setOnShowListener {
+            val done = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            done.isEnabled = false
+            consent.setOnCheckedChangeListener { _, checked -> done.isEnabled = checked }
+            done.setOnClickListener {
+                dialog.dismiss()
+                downloadAndInstallUpdate(downloadUrl)
+            }
+        }
+        dialog.show()
+    }
+
+    private fun downloadAndInstallUpdate(downloadUrl: String) {
+        val progressDialog = android.app.ProgressDialog(this).apply {
+            setTitle("Downloading update")
+            setMessage("Preparing download…")
+            setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
+            isIndeterminate = true
+            max = 100
+            setProgress(0)
+            setCancelable(false)
+            show()
+        }
+        Thread {
+            try {
                 val apkConnection = java.net.URL(downloadUrl).openConnection() as java.net.HttpURLConnection
                 apkConnection.connectTimeout = 20000
                 apkConnection.readTimeout = 30000
                 apkConnection.instanceFollowRedirects = true
                 apkConnection.setRequestProperty("User-Agent", "WaterTracker-Android")
                 if (apkConnection.responseCode != 200) throw IllegalStateException("APK download failed (HTTP ${apkConnection.responseCode}).")
+                val totalBytes = apkConnection.contentLengthLong
                 val updateDir = java.io.File(cacheDir, "updates").apply { mkdirs() }
                 val apkFile = java.io.File(updateDir, "watertracker-update.apk")
                 apkConnection.inputStream.use { input ->
-                    apkFile.outputStream().use { output -> input.copyTo(output) }
+                    apkFile.outputStream().use { output ->
+                        val buffer = ByteArray(8192)
+                        var downloaded = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            output.write(buffer, 0, count)
+                            downloaded += count
+                            if (totalBytes > 0L) {
+                                val percent = ((downloaded * 100L) / totalBytes).toInt().coerceIn(0, 100)
+                                runOnUiThread {
+                                    progressDialog.isIndeterminate = false
+                                    progressDialog.progress = percent
+                                    progressDialog.setMessage("Downloaded ${downloaded / 1024} KB of ${totalBytes / 1024} KB")
+                                }
+                            } else {
+                                runOnUiThread { progressDialog.setMessage("Downloaded ${downloaded / 1024} KB…") }
+                            }
+                        }
+                    }
                 }
                 apkConnection.disconnect()
                 if (apkFile.length() < 1024L * 1024L) {
                     apkFile.delete()
                     throw IllegalStateException("Downloaded APK is incomplete. Please try again.")
+                }
+                runOnUiThread {
+                    progressDialog.isIndeterminate = true
+                    progressDialog.setMessage("Download complete. Verifying update…")
                 }
                 java.util.zip.ZipFile(apkFile).use { zip ->
                     if (zip.getEntry("AndroidManifest.xml") == null) throw IllegalStateException("Downloaded file is not a valid Android APK.")
@@ -1051,11 +1151,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
                     .putString("pending_update_apk", apkFile.absolutePath).apply()
                 runOnUiThread {
-                    toast("Download complete. Opening Android installer…")
-                    installDownloadedUpdate(apkFile)
+                    progressDialog.dismiss()
+                    val installProgress = android.app.ProgressDialog(this).apply {
+                        setTitle("Update ready")
+                        setMessage("Opening Android installer. Android will display the installation progress and ask you to confirm installation.")
+                        setProgressStyle(android.app.ProgressDialog.STYLE_SPINNER)
+                        setCancelable(false)
+                        show()
+                    }
+                    window.decorView.postDelayed({ installProgress.dismiss(); installDownloadedUpdate(apkFile) }, 1200)
                 }
             } catch (e: Exception) {
-                runOnUiThread { toast("Update failed: ${e.localizedMessage ?: "Please try again later."}") }
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    toast("Update failed: ${e.localizedMessage ?: "Please try again later."}")
+                }
             }
         }.start()
     }
