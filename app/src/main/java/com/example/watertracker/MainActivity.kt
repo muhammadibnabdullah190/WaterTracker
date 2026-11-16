@@ -89,6 +89,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private val audioPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) startVoiceInput() else toast("Microphone permission was not granted.")
     }
+    private val voiceRecognitionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()?.lowercase(Locale.getDefault()).orEmpty()
+            when {
+                spoken.contains("500") -> { addWater(500); toast("500 ml added.") }
+                spoken.contains("250") -> { addWater(250); toast("250 ml added.") }
+                else -> toast("Please say 250 ml or 500 ml. Recognised: $spoken")
+            }
+        }
+    }
+
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
         updateLocationStatus()
         if (results.values.none { it }) toast("Location access was not granted.")
@@ -122,7 +134,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(10), dp(12), dp(18))
-            setBackgroundColor(android.graphics.Color.rgb(224, 244, 250))
+            setBackgroundResource(R.drawable.bg_water_background)
         }
 
         val hero = com.google.android.material.card.MaterialCardView(this).apply {
@@ -206,13 +218,29 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         summaryContent.addView(progressText)
         waterProgress = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
-            progressTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 150, 180))
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(225, 239, 246))
+            isIndeterminate = false
+            minHeight = dp(16)
             progress = 0
+            progressDrawable = android.graphics.drawable.LayerDrawable(arrayOf(
+                android.graphics.drawable.GradientDrawable().apply {
+                    setColor(android.graphics.Color.rgb(218, 239, 247))
+                    cornerRadius = dp(12).toFloat()
+                },
+                android.graphics.drawable.ClipDrawable(
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(android.graphics.Color.rgb(0, 145, 190))
+                        cornerRadius = dp(12).toFloat()
+                    }, android.view.Gravity.START, android.graphics.drawable.ClipDrawable.HORIZONTAL
+                )
+            )).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
+            visibility = android.view.View.VISIBLE
         }
-        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(14)).apply {
-            topMargin = dp(3)
-            bottomMargin = dp(4)
+        summaryContent.addView(waterProgress, LinearLayout.LayoutParams(-1, dp(18)).apply {
+            topMargin = dp(5)
+            bottomMargin = dp(8)
         })
         summary.addView(summaryContent)
         page.addView(summary)
@@ -227,15 +255,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 bottomMargin = dp(6)
             }
         }
-        addDashboardButton(dashboardGrid, "Quick Add", createQuickAddGraphic()) { showQuickAddOptions() }
-        addDashboardButton(dashboardGrid, "Voice logging", createVoiceGraphic()) { requestVoice() }
+        addDashboardButton(dashboardGrid, "Quick Add", ContextCompat.getDrawable(this, R.drawable.ic_quick_add)!!) { showQuickAddOptions() }
+        addDashboardButton(dashboardGrid, "Voice logging", ContextCompat.getDrawable(this, R.drawable.ic_voice)!!) { requestVoice() }
         addDashboardButton(
             dashboardGrid,
             if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging ON" else "Location tagging",
-            createLocationGraphic()
+            ContextCompat.getDrawable(this, R.drawable.ic_location)
         ) { toggleLocationTagging() }
-        addDashboardButton(dashboardGrid, "Quick Entries", createDashboardGlyph("entries")) { showQuickEntriesDialog() }
-        addDashboardButton(dashboardGrid, "Camera Tools", createDashboardGlyph("camera")) { showCameraToolsDialog() }
+        addDashboardButton(dashboardGrid, "Quick Entries", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showQuickEntriesDialog() }
+        addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -361,7 +389,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         graphic: android.graphics.drawable.Drawable,
         action: () -> Unit
     ) {
-        graphic.setBounds(0, 0, dp(25), dp(25))
         val button = createActionButton(label, action).apply {
             layoutParams = android.widget.GridLayout.LayoutParams(
                 android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
@@ -373,6 +400,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
             icon = graphic
             iconSize = dp(25)
+            graphic.setBounds(0, 0, dp(25), dp(25))
             iconPadding = dp(7)
             iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
             textSize = 11f
@@ -1127,62 +1155,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun startVoiceInput() {
         if (!hasPermission(Manifest.permission.RECORD_AUDIO)) {
-            toast("Microphone access is off. Allow it in App info → Permissions, then try again.")
+            toast("Allow Microphone for Water Tracker, then try Voice logging again.")
             return
         }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            toast("Speech recognition is unavailable. Enable or install Google Speech Services, then try again.")
-            return
-        }
-        speechRecognizer?.destroy()
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(this)
-        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
-            override fun onReadyForSpeech(params: Bundle?) { toast("Listening… say 250 ml or 500 ml.") }
-            override fun onBeginningOfSpeech() {}
-            override fun onRmsChanged(rmsdB: Float) {}
-            override fun onBufferReceived(buffer: ByteArray?) {}
-            override fun onEndOfSpeech() {}
-            override fun onError(error: Int) {
-                speechRecognizer?.destroy(); speechRecognizer = null
-                val message = when (error) {
-                    SpeechRecognizer.ERROR_AUDIO -> "Microphone audio error. Check microphone access."
-                    SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "The speech service cannot access the microphone. Check Microphone permission for both Water Tracker and Google Speech Services in Android Settings."
-                    SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Speech service network error. Check Google Speech Services and mobile data."
-                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "I could not recognise that. Please try again."
-                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech service is busy. Try again."
-                    SpeechRecognizer.ERROR_SERVER -> "Speech service returned a server error. Update or enable Google Speech Services."
-                    else -> "Speech recognition failed (error $error)."
-                }
-                toast(message)
-            }
-            override fun onResults(results: Bundle?) {
-                val spoken = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.lowercase(Locale.getDefault()).orEmpty()
-                speechRecognizer?.destroy(); speechRecognizer = null
-                when {
-                    spoken.contains("500") -> addWater(500)
-                    spoken.contains("250") -> addWater(250)
-                    else -> toast("Please say 250 ml or 500 ml. Recognised: $spoken")
-                }
-            }
-            override fun onPartialResults(partialResults: Bundle?) {}
-            override fun onEvent(eventType: Int, params: Bundle?) {}
-        })
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, Locale.getDefault().toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Say: add 250 ml or add 500 ml")
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
             putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, false)
-            putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, packageName)
         }
-        runCatching {
-            speechRecognizer?.startListening(intent)
-        }.onFailure {
-            speechRecognizer?.destroy()
-            speechRecognizer = null
-            toast("Could not start listening. Check microphone permission and Google Speech Services.")
+        if (intent.resolveActivity(packageManager) == null) {
+            toast("No speech recognition app is available. Install or enable Google Speech Services.")
+            return
+        }
+        try {
+            voiceRecognitionLauncher.launch(intent)
+        } catch (e: Exception) {
+            toast("Could not open speech recognition. Check Google Speech Services and its Microphone permission.")
         }
     }
 
