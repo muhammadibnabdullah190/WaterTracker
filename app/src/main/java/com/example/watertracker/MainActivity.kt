@@ -1241,20 +1241,52 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun showBackupRestoreDialog() {
-        AlertDialog.Builder(this)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        content.addView(TextView(this).apply {
+            text = "Create a backup file containing your water entries and app settings, or restore them later. Keep the file somewhere safe. It may contain saved location details."
+            textSize = 14f
+            setTextColor(android.graphics.Color.rgb(65, 85, 100))
+            setPadding(0, 0, 0, dp(12))
+        })
+        val createButton = Button(this).apply {
+            text = "Create backup"
+            isAllCaps = false
+        }
+        val restoreButton = Button(this).apply {
+            text = "Restore from backup"
+            isAllCaps = false
+        }
+        content.addView(createButton, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = dp(8)
+        })
+        content.addView(restoreButton, LinearLayout.LayoutParams(-1, -2))
+        val dialog = AlertDialog.Builder(this)
             .setTitle("Backup and restore")
-            .setMessage("Create a backup file containing your water entries and app settings, or restore them later. Keep the file somewhere safe. It may contain saved location details.")
-            .setItems(arrayOf("Create backup", "Restore from backup")) { _, choice ->
-                if (choice == 0) {
-                    val fileName = "WaterTracker-Backup-" +
-                        SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".json"
-                    backupFileLauncher.launch(fileName)
-                } else {
-                    restoreFileLauncher.launch(arrayOf("application/json", "text/*"))
-                }
-            }
+            .setView(content)
             .setNegativeButton("Close", null)
-            .show()
+            .create()
+        createButton.setOnClickListener {
+            dialog.dismiss()
+            val fileName = "WaterTracker-Backup-" +
+                SimpleDateFormat("yyyyMMdd-HHmm", Locale.US).format(Date()) + ".json"
+            try {
+                backupFileLauncher.launch(fileName)
+            } catch (e: Exception) {
+                toast("Could not open the backup save screen: ${e.localizedMessage ?: "Please try again."}")
+            }
+        }
+        restoreButton.setOnClickListener {
+            dialog.dismiss()
+            try {
+                restoreFileLauncher.launch(arrayOf("application/json", "text/*"))
+            } catch (e: Exception) {
+                toast("Could not open the restore file screen: ${e.localizedMessage ?: "Please try again."}")
+            }
+        }
+        dialog.show()
     }
 
     private fun writeBackup(uri: Uri) {
