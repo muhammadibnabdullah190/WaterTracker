@@ -424,21 +424,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         com.google.android.material.button.MaterialButton(this).apply {
             text = label
             isAllCaps = false
-            textSize = 12.5f
-            maxLines = 2
+            textSize = 11.5f
+            maxLines = 1
             gravity = android.view.Gravity.CENTER
-            cornerRadius = dp(13)
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            cornerRadius = dp(20)
             insetTop = 0
             insetBottom = 0
-            minHeight = dp(42)
-            setPadding(dp(8), dp(4), dp(8), dp(4))
+            minHeight = dp(34)
+            maxWidth = dp(168)
+            setPadding(dp(8), dp(2), dp(8), dp(2))
             setTextColor(android.graphics.Color.WHITE)
             backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 125, 166))
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
                 intArrayOf(android.graphics.Color.rgb(0, 151, 190), android.graphics.Color.rgb(0, 91, 139))
             ).apply {
-                cornerRadius = dp(13).toFloat()
+                cornerRadius = dp(20).toFloat()
                 setStroke(dp(1), android.graphics.Color.rgb(0, 78, 120))
             }
             elevation = dp(5).toFloat()
@@ -701,15 +703,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val button = com.google.android.material.button.MaterialButton(this).apply {
             text = label
             isAllCaps = false
-            textSize = 12.5f
-            maxLines = 2
+            textSize = 11.5f
+            maxLines = 1
             gravity = android.view.Gravity.CENTER
             ellipsize = android.text.TextUtils.TruncateAt.END
-            cornerRadius = dp(13)
+            cornerRadius = dp(20)
             insetTop = 0
             insetBottom = 0
-            minHeight = dp(42)
-            setPadding(dp(9), dp(4), dp(9), dp(4))
+            minHeight = dp(34)
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            maxWidth = dp(168)
             setTextColor(if (secondary) android.graphics.Color.rgb(24, 91, 121) else android.graphics.Color.WHITE)
             backgroundTintList = null
             background = android.graphics.drawable.GradientDrawable(
@@ -719,7 +722,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     android.graphics.Color.rgb(bottom ushr 16 and 255, bottom ushr 8 and 255, bottom and 255)
                 ) else intArrayOf(top, bottom)
             ).apply {
-                cornerRadius = dp(13).toFloat()
+                cornerRadius = dp(20).toFloat()
                 setStroke(dp(1), if (secondary) android.graphics.Color.rgb(174, 211, 229) else android.graphics.Color.rgb(0, 78, 120))
             }
             elevation = dp(5).toFloat()
@@ -731,8 +734,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
             android.widget.GridLayout.spec(column, 1f)
         ).apply {
-            width = 0
+            width = -2
             height = -2
+            gravity = android.view.Gravity.CENTER
             setMargins(dp(3), dp(3), dp(3), dp(3))
         }
         grid.addView(button, params)
