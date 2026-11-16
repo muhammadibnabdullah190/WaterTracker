@@ -105,17 +105,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun buildUi() {
+        val transparentTheme = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(18), dp(18), dp(30))
-            setBackgroundColor(android.graphics.Color.rgb(242, 248, 252))
+            setBackgroundColor(if (transparentTheme) android.graphics.Color.argb(225, 224, 244, 250) else android.graphics.Color.rgb(242, 248, 252))
         }
 
         val hero = com.google.android.material.card.MaterialCardView(this).apply {
             radius = dp(26).toFloat()
             cardElevation = dp(5).toFloat()
             strokeWidth = 0
-            setCardBackgroundColor(android.graphics.Color.rgb(13, 92, 153))
+            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.argb(218, 13, 92, 153) else android.graphics.Color.rgb(13, 92, 153))
             layoutParams = LinearLayout.LayoutParams(-1, dp(150)).apply { bottomMargin = dp(18) }
         }
         val heroContent = LinearLayout(this).apply {
@@ -124,7 +125,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(20), dp(18), dp(18), dp(18))
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
+                if (transparentTheme) intArrayOf(android.graphics.Color.argb(218, 5, 105, 175), android.graphics.Color.argb(218, 0, 150, 160))
+                else intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
             ).apply { cornerRadius = dp(26).toFloat() }
         }
         val logo = android.widget.ImageView(this).apply {
@@ -155,7 +157,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             cardElevation = dp(3).toFloat()
             strokeWidth = dp(1)
             setStrokeColor(android.graphics.Color.rgb(218, 233, 243))
-            setCardBackgroundColor(android.graphics.Color.WHITE)
+            setCardBackgroundColor(if (transparentTheme) android.graphics.Color.argb(205, 255, 255, 255) else android.graphics.Color.WHITE)
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(18) }
         }
         val summaryContent = LinearLayout(this).apply {
@@ -300,6 +302,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(page, "Day–night based", secondary = true) { saveThemeMode("day_night") }
         addButton(page, "Choice preference – Light or Dark", secondary = true) { showChoiceThemePicker() }
         addButton(page, "Motion detection based", secondary = true) { saveThemeMode("motion") }
+        addButton(page, "✨  Transparent Theme – glass style", secondary = true) { saveThemeMode("transparent") }
         val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
         page.addView(TextView(this).apply {
             text = "Current theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}"
@@ -423,7 +426,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val mode = p.getString("theme", "system") ?: "system"
         val dark = when (mode) {
             "dark", "choice_dark" -> true
-            "light", "choice_light" -> false
+            "light", "choice_light", "transparent" -> false
                         "viewing" -> false
             // Sleep API confidence uses 0–20 for Awake and 80–100 for Asleep.
             // The 21–79 middle band retains the last decided theme.
@@ -588,7 +591,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             minHeight = dp(50)
             setTextColor(if (secondary) android.graphics.Color.rgb(24, 91, 121) else android.graphics.Color.WHITE)
             backgroundTintList = android.content.res.ColorStateList.valueOf(
-                if (secondary) android.graphics.Color.rgb(225, 241, 248) else android.graphics.Color.rgb(0, 125, 166)
+                if (secondary && getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent")
+                    android.graphics.Color.argb(190, 225, 241, 248)
+                else if (secondary) android.graphics.Color.rgb(225, 241, 248)
+                else if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent")
+                    android.graphics.Color.argb(220, 0, 125, 166)
+                else android.graphics.Color.rgb(0, 125, 166)
             )
             setOnClickListener { action() }
         }
