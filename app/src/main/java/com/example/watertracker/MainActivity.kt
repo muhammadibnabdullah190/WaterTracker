@@ -1289,7 +1289,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             } ?: throw IllegalStateException("Could not open the selected backup file.")
             toast("Backup created successfully.")
         } catch (e: Exception) {
-            toast("Backup failed: \${e.localizedMessage ?: "Please try another location."}")
+            toast("Backup failed: ${e.localizedMessage ?: "Please try another location."}")
         }
     }
 
@@ -1347,7 +1347,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             recreate()
             toast("Backup restored successfully.")
         } catch (e: Exception) {
-            toast("Restore failed: \${e.localizedMessage ?: "The backup could not be read."}")
+            toast("Restore failed: ${e.localizedMessage ?: "The backup could not be read."}")
         }
     }
 
