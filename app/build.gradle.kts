@@ -5,6 +5,17 @@ plugins {
 android {
     namespace = "com.example.watertracker"
     compileSdk = 36
+    signingConfigs {
+        getByName("debug") {
+            val stableKeyPath = System.getenv("WATERTRACKER_KEYSTORE_PATH")
+            if (!stableKeyPath.isNullOrBlank()) {
+                storeFile = file(stableKeyPath)
+                storePassword = System.getenv("WATERTRACKER_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("WATERTRACKER_KEY_ALIAS")
+                keyPassword = System.getenv("WATERTRACKER_KEY_PASSWORD")
+            }
+        }
+    }
     defaultConfig {
         applicationId = "com.example.watertracker"
         minSdk = 26
