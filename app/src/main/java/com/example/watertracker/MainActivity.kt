@@ -323,68 +323,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             toast("Theme changes saved.")
         }
 
-        addSectionTitle(page, "Display & accessibility", "Adjust the app's appearance and readability.")
-        addSectionTitle(page, "Screen dim", "Turn the app screen dimming on or off.")
-        page.addView(Switch(this).apply {
-            text = "Dim screen"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("screen_dim_enabled", enabled).apply()
-                applyScreenDim(enabled)
-            }
-        })
-        addSectionTitle(page, "Blue light filter", "Apply a gentle warm tint while using Water Tracker.")
-        page.addView(Switch(this).apply {
-            text = "Blue light filter"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("blue_filter_enabled", enabled).apply()
-                blueFilterOverlay.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
-            }
-        })
-        addButton(page, "Color correction / color filters", secondary = true) {
-            toast("Enable color correction in Android accessibility settings.")
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        addButton(page, "⚙  Display & accessibility settings", secondary = true) {
+            showDisplayAccessibilityDialog()
         }
-        addSectionTitle(page, "Font size")
-        addButton(page, "Smaller font", secondary = true) { changeFontSize(-0.1f) }
-        addButton(page, "Larger font", secondary = true) { changeFontSize(0.1f) }
-        addButton(page, "Reset font size", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
-        addSectionTitle(page, "Font style")
-        addButton(page, "Default font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
-        addButton(page, "Serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
-        addButton(page, "Sans-serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
-        addButton(page, "Toggle bold text", secondary = true) { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
-        addSectionTitle(page, "Screen orientation")
-        addButton(page, "Portrait", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
-        addButton(page, "Landscape", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
-        addButton(page, "Auto (follow device)", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
-        addSectionTitle(page, "Screen awake setting")
-        page.addView(Switch(this).apply {
-            text = "Keep screen awake while Water Tracker is visible"
-            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-            setOnCheckedChangeListener { _, enabled ->
-                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
-                applyKeepScreenAwake()
-                toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
-            }
-        })
-        addSectionTitle(page, "App updates")
-        page.addView(Switch(this).apply {
-            text = "Automatic updates (disabled)"
-            isChecked = false
-            isEnabled = false
-            setTextColor(android.graphics.Color.rgb(35, 75, 99))
-        })
-        page.addView(TextView(this).apply {
-            text = "Updates are manual so you can review changes and permissions before installing."
-            textSize = 13f
-            setTextColor(android.graphics.Color.rgb(83, 112, 130))
-            setPadding(dp(4), dp(6), dp(4), dp(12))
-        })
         applyDisplayPreferences(page)
         applyViewOpacity(page, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
         val scroll = ScrollView(this).apply {
@@ -438,10 +379,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 125, 166))
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                intArrayOf(android.graphics.Color.rgb(0, 151, 190), android.graphics.Color.rgb(0, 91, 139))
+                intArrayOf(
+                    android.graphics.Color.argb(205, 125, 225, 245),
+                    android.graphics.Color.argb(150, 0, 125, 166)
+                )
             ).apply {
                 cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), android.graphics.Color.rgb(0, 78, 120))
+                setStroke(dp(1), android.graphics.Color.argb(220, 255, 255, 255))
             }
             elevation = dp(5).toFloat()
             stateListAnimator = android.animation.StateListAnimator()
@@ -717,13 +661,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             backgroundTintList = null
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                if (transparent) intArrayOf(
-                    android.graphics.Color.rgb(top ushr 16 and 255, top ushr 8 and 255, top and 255),
-                    android.graphics.Color.rgb(bottom ushr 16 and 255, bottom ushr 8 and 255, bottom and 255)
-                ) else intArrayOf(top, bottom)
+                if (secondary) intArrayOf(
+                    android.graphics.Color.argb(205, 255, 255, 255),
+                    android.graphics.Color.argb(145, 205, 238, 249)
+                ) else intArrayOf(
+                    android.graphics.Color.argb(205, 125, 225, 245),
+                    android.graphics.Color.argb(150, 0, 125, 166)
+                )
             ).apply {
                 cornerRadius = dp(20).toFloat()
-                setStroke(dp(1), if (secondary) android.graphics.Color.rgb(174, 211, 229) else android.graphics.Color.rgb(0, 78, 120))
+                setStroke(dp(1), android.graphics.Color.argb(220, 255, 255, 255))
             }
             elevation = dp(5).toFloat()
             stateListAnimator = android.animation.StateListAnimator()
@@ -739,6 +686,81 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setMargins(dp(3), dp(3), dp(3), dp(3))
         }
         grid.addView(button, params)
+    }
+
+    private fun showDisplayAccessibilityDialog() {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(4), dp(16), dp(12))
+        }
+        addSectionTitle(content, "Screen dim", "Turn the app screen dimming on or off.")
+        content.addView(Switch(this).apply {
+            text = "Dim screen"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("screen_dim_enabled", enabled).apply()
+                applyScreenDim(enabled)
+            }
+        })
+        addSectionTitle(content, "Blue light filter", "Apply a gentle warm tint while using Water Tracker.")
+        content.addView(Switch(this).apply {
+            text = "Blue light filter"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("blue_filter_enabled", enabled).apply()
+                blueFilterOverlay.visibility = if (enabled) android.view.View.VISIBLE else android.view.View.GONE
+            }
+        })
+        addButton(content, "Color correction / color filters", secondary = true) {
+            toast("Enable color correction in Android accessibility settings.")
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        addSectionTitle(content, "Font size")
+        addButton(content, "Smaller font", secondary = true) { changeFontSize(-0.1f) }
+        addButton(content, "Larger font", secondary = true) { changeFontSize(0.1f) }
+        addButton(content, "Reset font size", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putFloat("font_scale", 1f).apply(); recreate() }
+        addSectionTitle(content, "Font style")
+        addButton(content, "Default font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "default").apply(); recreate() }
+        addButton(content, "Serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "serif").apply(); recreate() }
+        addButton(content, "Sans-serif font", secondary = true) { getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("font_style", "sans").apply(); recreate() }
+        addButton(content, "Toggle bold text", secondary = true) { val p = getSharedPreferences("water_tracker", MODE_PRIVATE); p.edit().putBoolean("bold_text", !p.getBoolean("bold_text", false)).apply(); recreate() }
+        addSectionTitle(content, "Screen orientation")
+        addButton(content, "Portrait", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT }
+        addButton(content, "Landscape", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE }
+        addButton(content, "Auto (follow device)", secondary = true) { requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+        addSectionTitle(content, "Screen awake setting")
+        content.addView(Switch(this).apply {
+            text = "Keep screen awake while Water Tracker is visible"
+            isChecked = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("keep_screen_awake", true)
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+            setOnCheckedChangeListener { _, enabled ->
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putBoolean("keep_screen_awake", enabled).apply()
+                applyKeepScreenAwake()
+                toast(if (enabled) "Screen will stay awake while Water Tracker is visible." else "Normal Android screen timeout will apply.")
+            }
+        })
+        addSectionTitle(content, "App updates")
+        content.addView(Switch(this).apply {
+            text = "Automatic updates (disabled)"
+            isChecked = false
+            isEnabled = false
+            setTextColor(android.graphics.Color.rgb(35, 75, 99))
+        })
+        content.addView(TextView(this).apply {
+            text = "Updates are manual so you can review changes and permissions before installing."
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(83, 112, 130))
+            setPadding(dp(4), dp(6), dp(4), dp(12))
+        })
+        val scroll = ScrollView(this).apply { addView(content) }
+        AlertDialog.Builder(this)
+            .setTitle("Display & accessibility")
+            .setView(scroll)
+            .setPositiveButton("Close", null)
+            .show()
+        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
     }
 
     private fun hasPermission(permission: String): Boolean =
