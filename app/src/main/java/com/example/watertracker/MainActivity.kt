@@ -182,7 +182,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(layout, "Time based – configure your theme schedule") { showTimeThemeOptions() }
         addButton(layout, "Day–night based – local day/night cycle") { saveThemeMode("day_night") }
         addButton(layout, "Choice preference – select Light or Dark") { showChoiceThemePicker() }
-        addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }        val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
+        addButton(layout, "Motion detection based – movement / stillness") { saveThemeMode("motion") }
+        val themeMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system")
         layout.addView(TextView(this).apply {
             text = "Selected theme: ${themeMode?.replace('_', ' ')?.replaceFirstChar { it.uppercase() } ?: "System"}. Room-light and motion modes use device sensors. Weather mode asks you to select the current condition to avoid background data use."
             textSize = 13f
