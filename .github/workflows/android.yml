@@ -24,19 +24,22 @@ jobs:
         with:
           gradle-version: '8.11.1'
       - name: Configure persistent debug signing key
-        if: ${{ secrets.WATERTRACKER_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_B64: ${{ secrets.WATERTRACKER_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.WATERTRACKER_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.WATERTRACKER_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.WATERTRACKER_KEY_PASSWORD }}
         run: |
-          mkdir -p app/signing
-          printf '%s' "$KEYSTORE_B64" | base64 --decode > app/signing/watertracker-debug.keystore
-          echo "WATERTRACKER_KEYSTORE_PATH=$GITHUB_WORKSPACE/app/signing/watertracker-debug.keystore" >> "$GITHUB_ENV"
-          echo "WATERTRACKER_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
-          echo "WATERTRACKER_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
-          echo "WATERTRACKER_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          if [ -n "$KEYSTORE_B64" ]; then
+            mkdir -p app/signing
+            printf '%s' "$KEYSTORE_B64" | base64 --decode > app/signing/watertracker-debug.keystore
+            echo "WATERTRACKER_KEYSTORE_PATH=$GITHUB_WORKSPACE/app/signing/watertracker-debug.keystore" >> "$GITHUB_ENV"
+            echo "WATERTRACKER_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "WATERTRACKER_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "WATERTRACKER_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          else
+            echo "Persistent signing key not configured; using temporary CI debug key."
+          fi
       - name: Build debug APK
         run: gradle assembleDebug
       - name: Upload APK artifact
