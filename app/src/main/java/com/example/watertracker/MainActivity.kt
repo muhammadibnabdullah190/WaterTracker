@@ -427,13 +427,25 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         com.google.android.material.button.MaterialButton(this).apply {
             text = label
             isAllCaps = false
-            textSize = 15f
-            cornerRadius = dp(16)
+            textSize = 12.5f
+            maxLines = 2
+            gravity = android.view.Gravity.CENTER
+            cornerRadius = dp(13)
             insetTop = 0
             insetBottom = 0
+            minHeight = dp(42)
+            setPadding(dp(8), dp(4), dp(8), dp(4))
             setTextColor(android.graphics.Color.WHITE)
             backgroundTintList = android.content.res.ColorStateList.valueOf(android.graphics.Color.rgb(0, 125, 166))
-            elevation = dp(2).toFloat()
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                intArrayOf(android.graphics.Color.rgb(0, 151, 190), android.graphics.Color.rgb(0, 91, 139))
+            ).apply {
+                cornerRadius = dp(13).toFloat()
+                setStroke(dp(1), android.graphics.Color.rgb(0, 78, 120))
+            }
+            elevation = dp(5).toFloat()
+            stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
 
@@ -686,28 +698,40 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun addButton(parent: LinearLayout, label: String, secondary: Boolean = false, action: () -> Unit) {
+        val transparent = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
+        val top = if (secondary) android.graphics.Color.rgb(248, 253, 255) else android.graphics.Color.rgb(0, 151, 190)
+        val bottom = if (secondary) android.graphics.Color.rgb(205, 231, 243) else android.graphics.Color.rgb(0, 91, 139)
         val button = com.google.android.material.button.MaterialButton(this).apply {
             text = label
             isAllCaps = false
-            textSize = 14f
-            cornerRadius = dp(15)
-            insetTop = dp(2)
-            insetBottom = dp(2)
-            minHeight = dp(50)
+            textSize = 12.5f
+            maxLines = 2
+            gravity = android.view.Gravity.CENTER
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            cornerRadius = dp(13)
+            insetTop = 0
+            insetBottom = 0
+            minHeight = dp(42)
+            setPadding(dp(9), dp(4), dp(9), dp(4))
             setTextColor(if (secondary) android.graphics.Color.rgb(24, 91, 121) else android.graphics.Color.WHITE)
-            backgroundTintList = android.content.res.ColorStateList.valueOf(
-                if (secondary && getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent")
-                    android.graphics.Color.argb(190, 225, 241, 248)
-                else if (secondary) android.graphics.Color.rgb(225, 241, 248)
-                else if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent")
-                    android.graphics.Color.argb(220, 0, 125, 166)
-                else android.graphics.Color.rgb(0, 125, 166)
-            )
+            backgroundTintList = null
+            background = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+                if (transparent) intArrayOf(
+                    android.graphics.Color.argb(220, top ushr 16 and 255, top ushr 8 and 255, top and 255),
+                    android.graphics.Color.argb(220, bottom ushr 16 and 255, bottom ushr 8 and 255, bottom and 255)
+                ) else intArrayOf(top, bottom)
+            ).apply {
+                cornerRadius = dp(13).toFloat()
+                setStroke(dp(1), if (secondary) android.graphics.Color.rgb(174, 211, 229) else android.graphics.Color.rgb(0, 78, 120))
+            }
+            elevation = dp(5).toFloat()
+            stateListAnimator = android.animation.StateListAnimator()
             setOnClickListener { action() }
         }
         parent.addView(button, LinearLayout.LayoutParams(-1, -2).apply {
-            topMargin = dp(4)
-            bottomMargin = dp(5)
+            topMargin = dp(3)
+            bottomMargin = dp(4)
         })
     }
 
