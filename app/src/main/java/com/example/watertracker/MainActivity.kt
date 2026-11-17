@@ -241,6 +241,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         page.addView(summary)
         refreshWaterDisplay()
 
+        // Keep Theme as a dedicated full-width dashboard control so it is always visible.
+        val themeGrid = android.widget.GridLayout(this).apply {
+            columnCount = 1
+            rowCount = 1
+            useDefaultMargins = false
+            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                bottomMargin = dp(4)
+            }
+        }
+        addDashboardButton(themeGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
+        page.addView(themeGrid)
+
         val dashboardGrid = android.widget.GridLayout(this).apply {
             columnCount = 2
             rowCount = android.widget.GridLayout.UNDEFINED
@@ -259,7 +272,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         ) { toggleLocationTagging() }
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
-        addDashboardButton(dashboardGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
         addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showBackupRestoreDialog() }
