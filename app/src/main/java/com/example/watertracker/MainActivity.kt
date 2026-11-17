@@ -259,6 +259,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         ) { toggleLocationTagging() }
         addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
+        addDashboardButton(dashboardGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
         addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showBackupRestoreDialog() }
@@ -278,39 +279,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         refreshHistoryDisplay()
         updateLocationStatus()
-
-        addSectionTitle(page, "Appearance", "Transparent theme with adjustable background transparency.")
-        var pendingTransparency = getSharedPreferences("water_tracker", MODE_PRIVATE)
-            .getInt("transparency_level", 75).coerceIn(0, 100)
-        val transparencyLabel = TextView(this).apply {
-            textSize = 12f
-            setTextColor(android.graphics.Color.rgb(83, 112, 130))
-            setPadding(dp(3), dp(2), dp(3), dp(2))
-        }
-        page.addView(transparencyLabel)
-        val transparencySeek = android.widget.SeekBar(this).apply {
-            max = 100
-            progress = pendingTransparency
-            setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: android.widget.SeekBar?, progress: Int, fromUser: Boolean) {
-                    pendingTransparency = progress
-                    transparencyLabel.text = "Opacity: $pendingTransparency%  •  ${100 - pendingTransparency}% transparent"
-                    applyViewOpacity(page, pendingTransparency)
-                }
-                override fun onStartTrackingTouch(seekBar: android.widget.SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: android.widget.SeekBar?) {}
-            })
-        }
-        page.addView(transparencySeek)
-        transparencyLabel.text = "Opacity: $pendingTransparency%  •  ${100 - pendingTransparency}% transparent"
-        applyViewOpacity(page, pendingTransparency)
-        addButton(page, "✓  Save theme changes") {
-            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-                .putString("theme", "transparent")
-                .putInt("transparency_level", pendingTransparency)
-                .apply()
-            toast("Theme changes saved.")
-        }
 
         addButton(page, "♿  Accessibility settings", secondary = true) {
             showAccessibilityDialog()
@@ -638,14 +606,74 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun applyThemePreference() {
-        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("theme", "transparent").apply()
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val mode = p.getString("theme", "transparent") ?: "transparent"
+        val dark = when (mode) {
+            "motion" -> p.getBoolean("motion_theme_dark", true)
+            "muraqaba" -> p.getBoolean("sleep_theme_dark", false)
+            "room_light" -> p.getBoolean("last_room_dark", false)
+            "time" -> {
+                if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
+                else {
+                    val now = Calendar.getInstance().get(Calendar.HOUR_OF_DAY) * 60 + Calendar.getInstance().get(Calendar.MINUTE)
+                    val start = p.getInt("time_dark_start", 19 * 60)
+                    val end = p.getInt("time_dark_end", 7 * 60)
+                    if (start <= end) now in start until end else now >= start || now < end
+                }
+            }
+            "day_night" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 7..18
+            "choice_dark" -> true
+            "weather" -> p.getString("weather_condition", "clear") in listOf("cloudy", "rain", "storm")
+            else -> false
+        }
+        AppCompatDelegate.setDefaultNightMode(if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
     }
 
     private fun saveThemeMode(mode: String) {
-        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString("theme", mode).apply()
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+            .putString("theme", mode)
+            .putBoolean("motion_theme_dark", mode == "motion")
+            .apply()
         applyThemePreference()
         recreate()
+    }
+
+    private fun showThemeOptions() {
+        val options = arrayOf(
+            "Transparent Theme",
+            "Motion-Based Theme",
+            "Muraqaba Theme (Sleep Activity)",
+            "Room Light Theme",
+            "Weather Theme",
+            "Time-Based Theme",
+            "Day–Night Theme",
+            "Choice Preference (Light / Dark)"
+        )
+        AlertDialog.Builder(this).setTitle("Choose Theme")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> saveThemeMode("transparent")
+                    1 -> {
+                        getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                            .putString("theme", "motion").putBoolean("motion_theme_dark", true).apply()
+                        applyThemePreference()
+                        registerThemeSensor()
+                        recreate()
+                        toast("Motion-Based Theme enabled. Movement = Light; no movement for 10 seconds = Dark.")
+                    }
+                    2 -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                            !hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
+                            sleepActivityPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                        } else enableSleepActivityTheme()
+                    }
+                    3 -> saveThemeMode("room_light")
+                    4 -> showWeatherThemePicker()
+                    5 -> showTimeThemeOptions()
+                    6 -> saveThemeMode("day_night")
+                    7 -> showChoiceThemePicker()
+                }
+            }.show()
     }
 
     private fun showTimeThemeOptions() {
@@ -719,16 +747,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             applyThemePreference()
         } else if (mode == "motion" && event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
             val now = System.currentTimeMillis()
-            if (now - lastMotionThemeUpdate > 1500) {
-                val x = event.values[0]
-                val y = event.values[1]
-                val z = event.values[2]
-                val magnitude = kotlin.math.sqrt(x * x + y * y + z * z)
-                val movementDetected = kotlin.math.abs(magnitude - SensorManager.GRAVITY_EARTH) > 1.0f
-                if (movementDetected) {
+            val x = event.values[0]
+            val y = event.values[1]
+            val z = event.values[2]
+            val magnitude = kotlin.math.sqrt(x * x + y * y + z * z)
+            val movementDetected = kotlin.math.abs(magnitude - SensorManager.GRAVITY_EARTH) > 0.8f
+            val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            if (movementDetected) {
+                lastMotionThemeUpdate = now
+                if (prefs.getBoolean("motion_theme_dark", true)) {
+                    prefs.edit().putBoolean("motion_theme_dark", false).apply()
                     AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
                 }
+            } else if (lastMotionThemeUpdate == 0L) {
                 lastMotionThemeUpdate = now
+            } else if (now - lastMotionThemeUpdate >= 10_000L && !prefs.getBoolean("motion_theme_dark", true)) {
+                prefs.edit().putBoolean("motion_theme_dark", true).apply()
+                AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
             }
         }
     }
@@ -1794,6 +1829,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
             .putString("theme", "muraqaba")
+            .putBoolean("sleep_theme_dark", false)
             .putBoolean("sleep_theme_enabled", true)
             .putInt("sleep_awake_threshold", 20)
             .putInt("sleep_asleep_threshold", 80)
