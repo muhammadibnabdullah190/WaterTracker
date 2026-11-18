@@ -1250,39 +1250,64 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun checkForAppUpdate() {
-        toast("Checking GitHub for the latest Water Tracker update…")
+        toast("Checking for the latest Drinkable Water Reminder update…")
         Thread {
             try {
-                val connection = java.net.URL("https://api.github.com/repos/muhammadibnabdullah190/WaterTracker/releases/latest")
-                    .openConnection() as java.net.HttpURLConnection
-                connection.connectTimeout = 15000
-                connection.readTimeout = 15000
-                connection.setRequestProperty("Accept", "application/vnd.github+json")
-                connection.setRequestProperty("User-Agent", "WaterTracker-Android")
-                val code = connection.responseCode
-                if (code != 200) throw IllegalStateException(if (code == 404) "No published release is available yet." else "GitHub returned HTTP $code.")
-                val body = connection.inputStream.bufferedReader().use { it.readText() }
-                connection.disconnect()
-                val release = JSONObject(body)
-                val assets = release.optJSONArray("assets") ?: JSONArray()
-                var apkUrl: String? = null
-                for (i in 0 until assets.length()) {
-                    val asset = assets.optJSONObject(i) ?: continue
-                    if (asset.optString("name") == "app-debug.apk") {
-                        apkUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
-                        break
+                val repository = "muhammadibnabdullah190/WaterTracker"
+                var releaseName = ""
+                var notes = ""
+                var downloadUrl: String? = null
+                var apiFailure: Exception? = null
+                try {
+                    val api = java.net.URL("https://api.github.com/repos/$repository/releases/latest")
+                        .openConnection() as java.net.HttpURLConnection
+                    api.connectTimeout = 12000
+                    api.readTimeout = 12000
+                    api.setRequestProperty("Accept", "application/vnd.github+json")
+                    api.setRequestProperty("User-Agent", "DrinkableWaterReminder-Android")
+                    val code = api.responseCode
+                    if (code != 200) throw IllegalStateException("GitHub API HTTP $code")
+                    val body = api.inputStream.bufferedReader().use { it.readText() }
+                    api.disconnect()
+                    val release = JSONObject(body)
+                    releaseName = release.optString("name").takeIf { it.isNotBlank() } ?: release.optString("tag_name")
+                    notes = release.optString("body").takeIf { it != "null" }?.trim().orEmpty()
+                    val assets = release.optJSONArray("assets") ?: JSONArray()
+                    for (i in 0 until assets.length()) {
+                        val asset = assets.optJSONObject(i) ?: continue
+                        if (asset.optString("name") == "app-debug.apk") {
+                            downloadUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
+                            break
+                        }
                     }
+                    if (downloadUrl == null) throw IllegalStateException("Release APK asset is missing")
+                } catch (e: Exception) {
+                    apiFailure = e
                 }
-                val downloadUrl = apkUrl ?: throw IllegalStateException("The latest GitHub release does not contain app-debug.apk.")
-                val releaseName = release.optString("name").takeIf { it.isNotBlank() } ?: release.optString("tag_name")
-                val notes = release.optString("body").trim()
-                runOnUiThread { showUpdateConsentDialog(releaseName, notes, downloadUrl) }
+                if (downloadUrl == null) {
+                    // Fallback: resolve the latest release using github.com, without the API host.
+                    val latest = java.net.URL("https://github.com/$repository/releases/latest")
+                        .openConnection() as java.net.HttpURLConnection
+                    latest.instanceFollowRedirects = false
+                    latest.connectTimeout = 15000
+                    latest.readTimeout = 15000
+                    latest.setRequestProperty("User-Agent", "DrinkableWaterReminder-Android")
+                    val code = latest.responseCode
+                    val location = latest.getHeaderField("Location")
+                    latest.disconnect()
+                    val tag = location?.substringAfterLast("/")?.takeIf { location.contains("/releases/tag/") && it.isNotBlank() }
+                        ?: throw IllegalStateException("GitHub could not be reached. Check your mobile data and try again. ${apiFailure?.localizedMessage ?: ""}")
+                    releaseName = tag
+                    notes = "Latest release: $tag. Open the release notes on GitHub to review its changes."
+                    downloadUrl = "https://github.com/$repository/releases/latest/download/app-debug.apk"
+                }
+                val finalUrl = downloadUrl ?: throw IllegalStateException("No APK download link was found.")
+                runOnUiThread { showUpdateConsentDialog(releaseName, notes, finalUrl) }
             } catch (e: Exception) {
-                runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please try again later."}") }
+                runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please check your mobile data and try again."}") }
             }
         }.start()
     }
-
     private fun showUpdateConsentDialog(releaseName: String, notes: String, downloadUrl: String) {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
