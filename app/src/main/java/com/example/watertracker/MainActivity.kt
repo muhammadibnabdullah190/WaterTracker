@@ -245,7 +245,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging ON" else "Location tagging",
             ContextCompat.getDrawable(this, R.drawable.ic_location)!!
         ) { toggleLocationTagging() }
-        addDashboardButton(dashboardGrid, "Camera Tools", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
+        addDashboardButton(dashboardGrid, "Scan Barcode / QR Code", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
@@ -971,7 +971,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(10), dp(4), dp(4))
         }
         content.addView(note)
-        cameraDialog = AlertDialog.Builder(this).setTitle("Camera Tools").setView(content)
+        cameraDialog = AlertDialog.Builder(this).setTitle("Scan Barcode / QR Code").setView(content)
             .setNegativeButton("Close", null).create()
         cameraDialog?.setOnDismissListener {
             try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
@@ -1069,7 +1069,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         addButton(content, "View daily history", secondary = true) { showDailyHistory() }
         content.addView(historyText)
-        addSectionTitle(content, "Camera tools")
+        addSectionTitle(content, "Scan Barcode / QR Code")
         addButton(content, "▦  Scan barcode / QR code") {
             showCameraToolsDialog()
         }
