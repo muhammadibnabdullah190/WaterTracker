@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var speechRecognizer: SpeechRecognizer? = null
     private var manualEntryTime = Calendar.getInstance()
     private var locationTaggingEnabled = false
+    private var requestedLocationMode = "precise"
     private lateinit var screenDimOverlay: android.view.View
     private lateinit var blueFilterOverlay: android.view.View
     private lateinit var cameraPreview: PreviewView
@@ -105,7 +106,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val coarse = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
         val fine = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
         val granted = coarse || fine
-        val actualMode = if (fine) "precise" else "approximate"
+        val actualMode = if (requestedLocationMode == "precise" && fine) "precise" else "approximate"
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
             .putBoolean("location_tagging", granted)
             .putString("location_accuracy_mode", actualMode).apply()
@@ -1549,11 +1550,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 "Approximate location — broader area"
             )) { _, which ->
                 if (which == 0) {
+                    requestedLocationMode = "precise"
                     locationPermission.launch(arrayOf(
                         Manifest.permission.ACCESS_COARSE_LOCATION,
                         Manifest.permission.ACCESS_FINE_LOCATION
                     ))
                 } else {
+                    requestedLocationMode = "approximate"
                     locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
                 }
             }
