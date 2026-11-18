@@ -241,22 +241,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         page.addView(summary)
         refreshWaterDisplay()
 
-        // Keep Theme as a dedicated full-width dashboard control so it is always visible.
-        val themeGrid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
-                bottomMargin = dp(4)
-            }
-        }
-        addDashboardButton(themeGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
-        page.addView(themeGrid)
-
-        val dashboardGrid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        // Two equal-width buttons per row. Keep every dashboard action in this grid.
+        val dashboardGrid = android.widget.GridLayout(this).apply {
+            columnCount = 2
+            useDefaultMargins = false
+            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(6)
             }
         }
+        addDashboardButton(dashboardGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
         addDashboardButton(dashboardGrid, "Water Entries", ContextCompat.getDrawable(this, R.drawable.ic_quick_add)!!) { showQuickAddOptions() }
         addDashboardButton(dashboardGrid, "Voice logging", ContextCompat.getDrawable(this, R.drawable.ic_voice)!!) { requestVoice() }
         addDashboardButton(
@@ -269,6 +263,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
         addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_backup_restore)!!) { showBackupRestoreDialog() }
+        addDashboardButton(dashboardGrid, "Accessibility Settings", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showAccessibilityDialog() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -286,9 +281,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         refreshHistoryDisplay()
         updateLocationStatus()
 
-        addButton(page, "♿  Accessibility settings", secondary = true) {
-            showAccessibilityDialog()
-        }
         applyDisplayPreferences(page)
         applyViewOpacity(page, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
         val scroll = ScrollView(this).apply {
@@ -467,26 +459,31 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
     private fun addDashboardButton(
-        container: LinearLayout,
+        grid: android.widget.GridLayout,
         label: String,
         graphic: android.graphics.drawable.Drawable,
         action: () -> Unit
     ) {
         val button = createActionButton(label, action).apply {
-            layoutParams = LinearLayout.LayoutParams(-1, dp(52)).apply {
+            layoutParams = android.widget.GridLayout.LayoutParams(
+                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
+                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+            ).apply {
+                width = 0
+                height = dp(58)
                 setMargins(dp(4), dp(4), dp(4), dp(4))
             }
             icon = graphic
-            iconSize = dp(25)
-            graphic.setBounds(0, 0, dp(25), dp(25))
-            iconPadding = dp(7)
+            iconSize = dp(23)
+            graphic.setBounds(0, 0, dp(23), dp(23))
+            iconPadding = dp(5)
             iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
-            textSize = 13f
+            textSize = 12f
             maxWidth = Int.MAX_VALUE
             elevation = dp(7).toFloat()
             stateListAnimator = android.animation.StateListAnimator()
         }
-        container.addView(button)
+        grid.addView(button)
     }
 
     private fun createDashboardGlyph(kind: String): android.graphics.drawable.Drawable {
@@ -925,6 +922,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(16), dp(8), dp(16), dp(12))
         }
+        addSectionTitle(content, "Available camera actions")
+        // Keep each camera action on its own full-width line.
         addButton(content, "Scan barcode / QR code") {
             scanningExternalCamera = true
             if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
