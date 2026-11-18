@@ -1572,7 +1572,42 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             if (amount < 0) undoLastWaterEntry()
             return
         }
-        addWaterEntry(amount, System.currentTimeMillis())
+        confirmWaterEntry(amount, System.currentTimeMillis())
+    }
+
+    private fun confirmWaterEntry(amount: Int, timestamp: Long) {
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(4))
+        }
+        content.addView(TextView(this).apply {
+            text = "Water entry: $amount ml"
+            textSize = 17f
+            setTypeface(typeface, Typeface.BOLD)
+        })
+        val acknowledgement = android.widget.CheckBox(this).apply {
+            text = "I have consciousness regarding my hydration and health."
+            isChecked = false
+            setPadding(0, dp(12), 0, dp(8))
+        }
+        content.addView(acknowledgement)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Confirm water entry")
+            .setView(content)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("OK", null)
+            .create()
+        dialog.setOnShowListener {
+            val ok = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
+            ok.isEnabled = false
+            acknowledgement.setOnCheckedChangeListener { _, checked -> ok.isEnabled = checked }
+            ok.setOnClickListener {
+                dialog.dismiss()
+                addWaterEntry(amount, timestamp)
+                toast("$amount ml entry saved.")
+            }
+        }
+        dialog.show()
     }
 
     private fun addWaterEntry(amount: Int, timestamp: Long) {
@@ -1712,12 +1747,57 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             .setPositiveButton("Save") { _, _ ->
                 val amount = input.text.toString().toIntOrNull()
                 if (amount == null || amount !in 1..5000) toast("Enter an amount between 1 and 5000 ml.")
-                else { addWaterEntry(amount, manualEntryTime.timeInMillis); toast("$amount ml entry saved.") }
+                else { confirmWaterEntry(amount, manualEntryTime.timeInMillis) }
             }.show()
+    }
+
+    private fun showHistoricalStartSetup() {
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(4))
+        }
+        content.addView(TextView(this).apply {
+            text = "Choose your birth year. Historical records will start from this year. This setting is specific to this user on this device."
+            textSize = 14f
+        })
+        val yearPicker = android.widget.NumberPicker(this).apply {
+            minValue = 1900
+            maxValue = currentYear
+            value = currentYear - 25
+            wrapSelectorWheel = false
+        }
+        content.addView(yearPicker)
+        val acknowledgement = android.widget.CheckBox(this).apply {
+            text = "Since I am hydrated and healthy till now. I have consciousness regarding my hydration and health."
+            isChecked = true
+            isEnabled = false
+            setPadding(0, dp(8), 0, dp(8))
+        }
+        content.addView(acknowledgement)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Set historical records")
+            .setView(content)
+            .setCancelable(false)
+            .setPositiveButton("OK", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                    .putInt("history_birth_year", yearPicker.value).apply()
+                dialog.dismiss()
+                showDailyHistory()
+            }
+        }
+        dialog.show()
     }
 
     private fun showDailyHistory() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        if (!prefs.contains("history_birth_year")) {
+            showHistoricalStartSetup()
+            return
+        }
         val table = android.widget.TableLayout(this).apply {
             isStretchAllColumns = true
             setPadding(dp(6), dp(8), dp(6), dp(12))
