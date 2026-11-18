@@ -274,7 +274,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
-        addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showBackupRestoreDialog() }
+        addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_backup_restore)!!) { showBackupRestoreDialog() }
         page.addView(dashboardGrid)
 
         historyText = TextView(this).apply {
@@ -618,76 +618,46 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun applyThemePreference() {
-        val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
-        val mode = p.getString("theme", "transparent") ?: "transparent"
-        val dark = when (mode) {
-            "motion" -> p.getBoolean("motion_theme_dark", true)
-            "muraqaba" -> p.getBoolean("sleep_theme_dark", false)
-            "room_light" -> p.getBoolean("last_room_dark", false)
-            "time" -> {
-                if (p.getBoolean("time_all_day", false)) p.getBoolean("time_all_day_dark", false)
-                else {
-                    val now = Calendar.getInstance().get(Calendar.HOUR_OF_DAY) * 60 + Calendar.getInstance().get(Calendar.MINUTE)
-                    val start = p.getInt("time_dark_start", 19 * 60)
-                    val end = p.getInt("time_dark_end", 7 * 60)
-                    if (start <= end) now in start until end else now >= start || now < end
-                }
-            }
-            "day_night" -> Calendar.getInstance().get(Calendar.HOUR_OF_DAY) !in 7..18
-            "choice_dark" -> true
-            "weather" -> p.getString("weather_condition", "clear") in listOf("cloudy", "rain", "storm")
-            else -> false
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val stored = prefs.getString("theme", "system") ?: "system"
+        val mode = when (stored) {
+            "light", "choice_light" -> "light"
+            "dark", "choice_dark" -> "dark"
+            "system" -> "system"
+            else -> "system"
         }
-        AppCompatDelegate.setDefaultNightMode(if (dark) AppCompatDelegate.MODE_NIGHT_YES else AppCompatDelegate.MODE_NIGHT_NO)
+        if (stored != mode) prefs.edit().putString("theme", mode).apply()
+        val nightMode = when (mode) {
+            "light" -> AppCompatDelegate.MODE_NIGHT_NO
+            "dark" -> AppCompatDelegate.MODE_NIGHT_YES
+            else -> AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
+        }
+        AppCompatDelegate.setDefaultNightMode(nightMode)
     }
 
     private fun saveThemeMode(mode: String) {
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
             .putString("theme", mode)
-            .putBoolean("motion_theme_dark", mode == "motion")
             .apply()
         applyThemePreference()
         recreate()
     }
 
     private fun showThemeOptions() {
-        val options = arrayOf(
-            "Transparent Theme",
-            "Motion-Based Theme",
-            "Muraqaba Theme (Sleep Activity)",
-            "Room Light Theme",
-            "Weather Theme",
-            "Time-Based Theme",
-            "Day–Night Theme",
-            "Choice Preference (Light / Dark)"
-        )
-        AlertDialog.Builder(this).setTitle("Choose Theme")
-            .setItems(options) { _, which ->
-                when (which) {
-                    0 -> saveThemeMode("transparent")
-                    1 -> {
-                        getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-                            .putString("theme", "motion").putBoolean("motion_theme_dark", true).apply()
-                        applyThemePreference()
-                        registerThemeSensor()
-                        recreate()
-                        toast("Motion-Based Theme enabled. Movement = Light; no movement for 10 seconds = Dark.")
-                    }
-                    2 -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
-                            !hasPermission(Manifest.permission.ACTIVITY_RECOGNITION)) {
-                            sleepActivityPermission.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-                        } else enableSleepActivityTheme()
-                    }
-                    3 -> saveThemeMode("room_light")
-                    4 -> showWeatherThemePicker()
-                    5 -> showTimeThemeOptions()
-                    6 -> saveThemeMode("day_night")
-                    7 -> showChoiceThemePicker()
-                }
-            }.show()
+        val options = arrayOf("Light", "Dark", "System Theme")
+        val current = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            .getString("theme", "system") ?: "system"
+        val checked = when (current) { "light" -> 0; "dark" -> 1; else -> 2 }
+        AlertDialog.Builder(this)
+            .setTitle("Choose Theme")
+            .setSingleChoiceItems(options, checked) { dialog, which ->
+                val mode = when (which) { 0 -> "light"; 1 -> "dark"; else -> "system" }
+                dialog.dismiss()
+                saveThemeMode(mode)
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
-
     private fun showTimeThemeOptions() {
         val p = getSharedPreferences("water_tracker", MODE_PRIVATE)
         AlertDialog.Builder(this).setTitle("Time-based theme")
