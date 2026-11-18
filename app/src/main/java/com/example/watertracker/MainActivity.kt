@@ -1860,67 +1860,158 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (yearly.isEmpty()) addSummary("No recorded water intake yet.")
         else yearly.forEach { (yr, amount) -> addSummary("$yr: $amount ml") }
 
-        addSection("DAILY ENTRY RECORDS • LAST 30 DAYS")
-        val table = android.widget.TableLayout(this).apply {
+        addSection("DAILY RECORDS • CALENDAR")
+        val calendarPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(8))
+        }
+        val monthHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        val previousMonth = com.google.android.material.button.MaterialButton(this).apply {
+            text = "‹"; isAllCaps = false; minWidth = dp(44)
+        }
+        val monthLabel = TextView(this).apply {
+            textSize = 16f
+            gravity = android.view.Gravity.CENTER
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(android.graphics.Color.rgb(35, 83, 108))
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+        }
+        val nextMonth = com.google.android.material.button.MaterialButton(this).apply {
+            text = "›"; isAllCaps = false; minWidth = dp(44)
+        }
+        monthHeader.addView(previousMonth)
+        monthHeader.addView(monthLabel)
+        monthHeader.addView(nextMonth)
+        calendarPanel.addView(monthHeader)
+        val calendarGrid = android.widget.TableLayout(this).apply {
             isStretchAllColumns = true
-            setPadding(0, dp(4), 0, dp(8))
+            setPadding(0, dp(4), 0, dp(4))
         }
-        fun addCell(row: android.widget.TableRow, value: String, bold: Boolean = false, color: Int = android.graphics.Color.rgb(55, 83, 101)) {
-            row.addView(TextView(this).apply {
-                text = value
-                textSize = 10.5f
-                setTextColor(color)
-                setTypeface(typeface, if (bold) Typeface.BOLD else Typeface.NORMAL)
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(dp(4), dp(7), dp(4), dp(7))
+        calendarPanel.addView(calendarGrid)
+        calendarPanel.addView(TextView(this).apply {
+            text = "Tap any date to view its individual water entries. Daily totals appear inside calendar dates."
+            textSize = 11f
+            setTextColor(android.graphics.Color.rgb(90, 105, 115))
+            setPadding(dp(4), dp(8), dp(4), dp(4))
+        })
+        var displayedMonth = (today.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
+
+        fun showDateEntries(date: Calendar) {
+            val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(date.time)
+            val label = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.getDefault()).format(date.time)
+            val entries = runCatching { JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]") }.getOrElse { JSONArray() }
+            val storedTotal = if (key == todayDate) totalMl else prefs.getInt("total_ml_$key", totals[key] ?: 0)
+            val detail = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(20), dp(8), dp(20), dp(8))
+            }
+            detail.addView(TextView(this).apply {
+                text = "$label\nDaily total: $storedTotal ml"
+                textSize = 15f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(android.graphics.Color.rgb(35, 83, 108))
             })
-        }
-        val header = android.widget.TableRow(this).apply {
-            setBackgroundColor(android.graphics.Color.rgb(220, 242, 249))
-        }
-        listOf("Date", "Time", "Entry", "Location", "Daily goal").forEach { addCell(header, it, true) }
-        table.addView(header)
-        for (offset in 0..29) {
-            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
-            val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-            val dateLabel = SimpleDateFormat("dd MMM", Locale.getDefault()).format(cal.time)
-            val dayTotal = if (key == todayDate) totalMl else prefs.getInt("total_ml_$key", totals[key] ?: 0)
-            val dayEntries = runCatching { JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]") }.getOrElse { JSONArray() }
-            val completed = dayTotal >= dailyGoalMl
-            val goalLabel = if (completed) "✓ Done" else "✕ Not done"
-            val goalColor = if (completed) android.graphics.Color.rgb(35, 145, 75) else android.graphics.Color.rgb(205, 55, 55)
-            if (dayEntries.length() == 0) {
-                val row = android.widget.TableRow(this)
-                addCell(row, dateLabel)
-                addCell(row, "—")
-                addCell(row, if (dayTotal > 0) "$dayTotal ml total" else "No entries")
-                addCell(row, "—")
-                addCell(row, goalLabel, true, goalColor)
-                table.addView(row)
+            if (entries.length() == 0) {
+                detail.addView(TextView(this).apply {
+                    text = if (storedTotal > 0) "Individual entry details are not available for this date." else "No water entries recorded on this date."
+                    textSize = 13f
+                    setPadding(0, dp(12), 0, dp(4))
+                })
             } else {
-                for (index in 0 until dayEntries.length()) {
-                    val entry = dayEntries.optJSONObject(index) ?: continue
-                    val row = android.widget.TableRow(this).apply {
-                        setBackgroundColor(if ((offset + index) % 2 == 0) android.graphics.Color.argb(24, 0, 135, 180) else android.graphics.Color.TRANSPARENT)
-                    }
-                    val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(entry.optLong("time")))
-                    val location = if (entry.has("latitude") && entry.has("longitude")) {
-                        String.format(Locale.US, "%.4f, %.4f", entry.optDouble("latitude"), entry.optDouble("longitude"))
-                    } else "—"
-                    addCell(row, dateLabel)
-                    addCell(row, time)
-                    addCell(row, "${entry.optInt("amount")} ml")
-                    addCell(row, location)
-                    addCell(row, goalLabel, true, goalColor)
-                    table.addView(row)
+                for (i in 0 until entries.length()) {
+                    val item = entries.optJSONObject(i) ?: continue
+                    val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(item.optLong("time")))
+                    val location = if (item.has("latitude") && item.has("longitude")) {
+                        String.format(Locale.US, "\nLocation: %.4f, %.4f", item.optDouble("latitude"), item.optDouble("longitude"))
+                    } else ""
+                    detail.addView(TextView(this).apply {
+                        text = "• $time — \${item.optInt("amount")} ml$location"
+                        textSize = 13f
+                        setPadding(0, dp(8), 0, dp(8))
+                    })
                 }
             }
-            table.addView(android.view.View(this).apply {
-                setBackgroundColor(android.graphics.Color.argb(35, 40, 100, 125))
-                layoutParams = android.widget.TableLayout.LayoutParams(-1, dp(1))
-            })
+            AlertDialog.Builder(this).setTitle("Daily entries").setView(detail)
+                .setPositiveButton("Close", null).show()
         }
-        content.addView(table)
+
+        fun renderCalendar() {
+            calendarGrid.removeAllViews()
+            monthLabel.text = SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(displayedMonth.time)
+            previousMonth.isEnabled = displayedMonth.get(Calendar.YEAR) > birthYear ||
+                displayedMonth.get(Calendar.MONTH) > 0
+            nextMonth.isEnabled = displayedMonth.get(Calendar.YEAR) < currentYear ||
+                (displayedMonth.get(Calendar.YEAR) == currentYear && displayedMonth.get(Calendar.MONTH) < today.get(Calendar.MONTH))
+            val weekdays = android.widget.TableRow(this)
+            listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun").forEach { day ->
+                weekdays.addView(TextView(this).apply {
+                    text = day
+                    textSize = 11f
+                    gravity = android.view.Gravity.CENTER
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(android.graphics.Color.rgb(75, 95, 108))
+                    setPadding(0, dp(8), 0, dp(8))
+                })
+            }
+            calendarGrid.addView(weekdays)
+            val firstDay = (displayedMonth.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, 1) }
+            val daysInMonth = firstDay.getActualMaximum(Calendar.DAY_OF_MONTH)
+            val mondayOffset = (firstDay.get(Calendar.DAY_OF_WEEK) + 5) % 7
+            var dayNumber = 1
+            while (dayNumber <= daysInMonth) {
+                val row = android.widget.TableRow(this)
+                for (column in 0..6) {
+                    val cellDay = if (dayNumber == 1 && column < mondayOffset) 0 else dayNumber
+                    if (cellDay == 0 || cellDay > daysInMonth) {
+                        row.addView(TextView(this).apply { text = ""; minHeight = dp(62) },
+                            android.widget.TableRow.LayoutParams(0, dp(62), 1f))
+                    } else {
+                        val date = (displayedMonth.clone() as Calendar).apply { set(Calendar.DAY_OF_MONTH, cellDay) }
+                        val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(date.time)
+                        val dayEntries = runCatching { JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]") }.getOrElse { JSONArray() }
+                        val amount = if (key == todayDate) totalMl else prefs.getInt("total_ml_$key", totals[key] ?: 0)
+                        val isFuture = date.after(today)
+                        val cell = TextView(this).apply {
+                            text = if (amount > 0) "$cellDay\n\${amount}ml" else cellDay.toString()
+                            textSize = if (amount > 0) 10.5f else 13f
+                            gravity = android.view.Gravity.CENTER
+                            minHeight = dp(62)
+                            setPadding(dp(1), dp(4), dp(1), dp(4))
+                            setTextColor(if (isFuture) android.graphics.Color.LTGRAY else android.graphics.Color.rgb(45, 73, 91))
+                            background = android.graphics.drawable.GradientDrawable().apply {
+                                setColor(when {
+                                    isFuture -> android.graphics.Color.TRANSPARENT
+                                    key == todayDate -> android.graphics.Color.rgb(208, 239, 250)
+                                    amount > 0 -> android.graphics.Color.rgb(231, 246, 238)
+                                    else -> android.graphics.Color.TRANSPARENT
+                                })
+                                cornerRadius = dp(8).toFloat()
+                                setStroke(dp(1), android.graphics.Color.rgb(225, 232, 236))
+                            }
+                            isEnabled = !isFuture
+                            if (!isFuture) setOnClickListener { showDateEntries(date) }
+                            contentDescription = "$key, $amount ml, \${dayEntries.length()} entries"
+                        }
+                        row.addView(cell, android.widget.TableRow.LayoutParams(0, dp(62), 1f))
+                        dayNumber++
+                    }
+                }
+                calendarGrid.addView(row)
+            }
+        }
+        previousMonth.setOnClickListener {
+            displayedMonth.add(Calendar.MONTH, -1)
+            renderCalendar()
+        }
+        nextMonth.setOnClickListener {
+            displayedMonth.add(Calendar.MONTH, 1)
+            renderCalendar()
+        }
+        renderCalendar()
+        content.addView(calendarPanel)
         val scroll = ScrollView(this).apply {
             addView(content)
             layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(520))
