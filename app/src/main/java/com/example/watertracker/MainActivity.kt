@@ -1887,9 +1887,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val coarse = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
         val fine = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
         val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
+        val selectedMode = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("location_accuracy_mode", if (fine) "precise" else "approximate")
         locationText.text = when {
-            enabled && fine -> "Location tagging: ON (Precise)"
-            enabled && coarse -> "Location tagging: ON (Approximate)"
+            enabled && coarse -> "Location tagging: ON (" + (if (selectedMode == "precise" && fine) "Precise" else "Approximate") + ")"
             else -> "Location tagging: OFF"
         }
     }
