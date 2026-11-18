@@ -242,11 +242,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         refreshWaterDisplay()
 
         // Keep Theme as a dedicated full-width dashboard control so it is always visible.
-        val themeGrid = android.widget.GridLayout(this).apply {
-            columnCount = 1
-            rowCount = 1
-            useDefaultMargins = false
-            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        val themeGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(4)
             }
@@ -254,12 +251,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(themeGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
         page.addView(themeGrid)
 
-        val dashboardGrid = android.widget.GridLayout(this).apply {
-            // One full-width column avoids hiding alternating controls on some device widths.
-            columnCount = 1
-            rowCount = android.widget.GridLayout.UNDEFINED
-            useDefaultMargins = false
-            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        val dashboardGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
                 bottomMargin = dp(6)
             }
@@ -474,18 +467,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
 
     private fun addDashboardButton(
-        grid: android.widget.GridLayout,
+        container: LinearLayout,
         label: String,
         graphic: android.graphics.drawable.Drawable,
         action: () -> Unit
     ) {
         val button = createActionButton(label, action).apply {
-            layoutParams = android.widget.GridLayout.LayoutParams(
-                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
-                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-            ).apply {
-                width = 0
-                height = dp(44)
+            layoutParams = LinearLayout.LayoutParams(-1, dp(52)).apply {
                 setMargins(dp(4), dp(4), dp(4), dp(4))
             }
             icon = graphic
@@ -493,12 +481,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             graphic.setBounds(0, 0, dp(25), dp(25))
             iconPadding = dp(7)
             iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
-            textSize = 11f
+            textSize = 13f
             maxWidth = Int.MAX_VALUE
             elevation = dp(7).toFloat()
             stateListAnimator = android.animation.StateListAnimator()
         }
-        grid.addView(button)
+        container.addView(button)
     }
 
     private fun createDashboardGlyph(kind: String): android.graphics.drawable.Drawable {
