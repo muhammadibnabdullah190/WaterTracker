@@ -72,7 +72,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var lastMotionThemeUpdate = 0L
 
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
-        if (it) photoPicker.launch(null) else toast("Camera permission was not granted.")
+        if (it) openCameraToolsSession() else toast("Camera permission was not granted.")
     }
     private val sleepActivityPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) enableSleepActivityTheme()
@@ -117,20 +117,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private val restoreFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) confirmRestore(uri)
     }
-    private val photoPicker = registerForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap ->
-        if (bitmap != null) {
-            if (scanningExternalCamera) {
-                val input = InputImage.fromBitmap(bitmap, 0)
-                BarcodeScanning.getClient().process(input)
-                    .addOnSuccessListener { codes ->
-                        val value = codes.firstOrNull()?.rawValue
-                        toast(if (value != null) "Barcode / QR: $value" else "No barcode or QR code found in the captured image.")
-                    }
-                    .addOnFailureListener { toast("Could not scan the captured image.") }
-            } else toast("Photo captured successfully.")
-        }
-        scanningExternalCamera = false
-    }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         applyThemePreference()
@@ -917,25 +904,147 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         grid.addView(button, params)
     }
 
+    private var cameraImageCapture: androidx.camera.core.ImageCapture? = null
+    private var cameraAnalysis: ImageAnalysis? = null
+    private var cameraDialog: AlertDialog? = null
+    private var cameraScanner: com.google.mlkit.vision.barcode.BarcodeScanner? = null
+    private var lastScannedValue: String? = null
+
     private fun showCameraToolsDialog() {
+        if (hasPermission(Manifest.permission.CAMERA)) {
+            openCameraToolsSession()
+        } else {
+            cameraPermission.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun openCameraToolsSession() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(8), dp(16), dp(12))
+            setPadding(dp(12), dp(8), dp(12), dp(10))
         }
-        addSectionTitle(content, "Available camera actions")
-        // Keep each camera action on its own full-width line.
-        addButton(content, "Scan barcode / QR code") {
-            scanningExternalCamera = true
-            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
-            else cameraPermission.launch(Manifest.permission.CAMERA)
+        val preview = PreviewView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, dp(330))
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
-        addButton(content, "Take a water bottle photo", secondary = true) {
-            scanningExternalCamera = false
-            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
-            else cameraPermission.launch(Manifest.permission.CAMERA)
+        cameraPreview = preview
+        content.addView(preview)
+        val status = TextView(this).apply {
+            text = "Starting camera…"
+            textSize = 14f
+            setPadding(dp(4), dp(8), dp(4), dp(8))
         }
-        AlertDialog.Builder(this).setTitle("Camera Tools").setView(content)
-            .setPositiveButton("Close", null).show()
+        content.addView(status)
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val scanButton = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Scan barcode / QR code"
+            isAllCaps = false
+            setOnClickListener {
+                lastScannedValue = null
+                status.text = "Scanning… Point the camera at a barcode or QR code."
+                cameraAnalysis?.clearAnalyzer()
+                cameraAnalysis?.setAnalyzer(cameraExecutor) { proxy ->
+                    val media = proxy.image
+                    if (media == null) { proxy.close(); return@setAnalyzer }
+                    val input = InputImage.fromMediaImage(media, proxy.imageInfo.rotationDegrees)
+                    (cameraScanner ?: BarcodeScanning.getClient().also { cameraScanner = it })
+                        .process(input)
+                        .addOnSuccessListener { codes ->
+                            val value = codes.firstOrNull()?.rawValue
+                            if (!value.isNullOrBlank() && value != lastScannedValue) {
+                                lastScannedValue = value
+                                runOnUiThread { status.text = "Barcode / QR result: $value" }
+                            }
+                        }
+                        .addOnFailureListener { error ->
+                            runOnUiThread { status.text = "Scan failed: ${error.localizedMessage ?: "Please try again."}" }
+                        }
+                        .addOnCompleteListener { proxy.close() }
+                }
+            }
+        }
+        val photoButton = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Take a water bottle photo"
+            isAllCaps = false
+            setOnClickListener {
+                val capture = cameraImageCapture
+                if (capture == null) {
+                    status.text = "Camera is not ready yet."
+                } else {
+                    status.text = "Capturing photo…"
+                    capture.takePicture(cameraExecutor,
+                        object : androidx.camera.core.ImageCapture.OnImageCapturedCallback() {
+                            override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
+                                val bitmap = image.toBitmap()
+                                image.close()
+                                runOnUiThread {
+                                    val imageView = android.widget.ImageView(this@MainActivity).apply {
+                                        setImageBitmap(bitmap)
+                                        adjustViewBounds = true
+                                        maxHeight = dp(420)
+                                    }
+                                    AlertDialog.Builder(this@MainActivity)
+                                        .setTitle("Captured water bottle photo")
+                                        .setView(ScrollView(this@MainActivity).apply { addView(imageView) })
+                                        .setPositiveButton("Close", null)
+                                        .show()
+                                    status.text = "Photo captured successfully."
+                                }
+                            }
+                            override fun onError(exception: androidx.camera.core.ImageCaptureException) {
+                                runOnUiThread { status.text = "Photo capture failed: ${exception.localizedMessage ?: "Please try again."}" }
+                            }
+                        })
+                }
+            }
+        }
+        actions.addView(scanButton, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+        actions.addView(photoButton, LinearLayout.LayoutParams(-1, -2))
+        content.addView(actions)
+        cameraDialog = AlertDialog.Builder(this).setTitle("Camera Tools").setView(content)
+            .setNegativeButton("Close", null).create()
+        cameraDialog?.setOnDismissListener {
+            try {
+                ProcessCameraProvider.getInstance(this).get().unbindAll()
+            } catch (_: Exception) { }
+            cameraStarted = false
+            cameraImageCapture = null
+            cameraAnalysis = null
+            cameraScanner?.close()
+            cameraScanner = null
+        }
+        cameraDialog?.show()
+        startCameraToolsPreview(preview, status)
+    }
+
+    private fun startCameraToolsPreview(previewView: PreviewView, status: TextView) {
+        val providerFuture = ProcessCameraProvider.getInstance(this)
+        providerFuture.addListener({
+            try {
+                val provider = providerFuture.get()
+                val preview = Preview.Builder().build().also {
+                    it.setSurfaceProvider(previewView.surfaceProvider)
+                }
+                val capture = androidx.camera.core.ImageCapture.Builder()
+                    .setCaptureMode(androidx.camera.core.ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                    .build()
+                val analysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+                provider.unbindAll()
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture, analysis)
+                cameraImageCapture = capture
+                cameraAnalysis = analysis
+                cameraStarted = true
+                status.text = "Camera ready. Choose an action below."
+            } catch (error: Exception) {
+                cameraStarted = false
+                status.text = "Unable to start camera: ${error.localizedMessage ?: "Camera unavailable."}"
+            }
+        }, ContextCompat.getMainExecutor(this))
     }
 
     private fun showWaterToolsDialog() {
