@@ -102,13 +102,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private val locationPermission = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { results ->
-        val granted = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ||
-            hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+        val fine = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        val granted = coarse || fine
+        val actualMode = if (fine) "precise" else "approximate"
         getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-            .putBoolean("location_tagging", granted).apply()
+            .putBoolean("location_tagging", granted)
+            .putString("location_accuracy_mode", actualMode).apply()
         locationTaggingEnabled = granted
         updateLocationStatus()
         if (!granted) toast("Location access was not granted. Location tagging remains off.")
+        else toast(if (fine) "Precise location tagging enabled." else "Approximate location tagging enabled.")
         recreate()
     }
     private val backupFileLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
@@ -1522,18 +1526,39 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun toggleLocationTagging() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
-        val enabled = prefs.getBoolean("location_tagging", false)
-        if (enabled) {
-            prefs.edit().putBoolean("location_tagging", false).apply()
-            locationTaggingEnabled = false
-            toast("Location tagging disabled.")
-            recreate()
-        } else {
-            locationPermission.launch(arrayOf(
-                Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ))
-        }
+        if (prefs.getBoolean("location_tagging", false)) {
+            AlertDialog.Builder(this)
+                .setTitle("Location tagging")
+                .setItems(arrayOf("Change location accuracy", "Turn location tagging off")) { _, which ->
+                    if (which == 0) showLocationAccuracyOptions()
+                    else {
+                        prefs.edit().putBoolean("location_tagging", false).apply()
+                        locationTaggingEnabled = false
+                        toast("Location tagging disabled.")
+                        recreate()
+                    }
+                }.setNegativeButton("Cancel", null).show()
+        } else showLocationAccuracyOptions()
+    }
+
+    private fun showLocationAccuracyOptions() {
+        AlertDialog.Builder(this)
+            .setTitle("Choose location accuracy")
+            .setItems(arrayOf(
+                "Precise location — more accurate coordinates",
+                "Approximate location — broader area"
+            )) { _, which ->
+                if (which == 0) {
+                    locationPermission.launch(arrayOf(
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                        Manifest.permission.ACCESS_FINE_LOCATION
+                    ))
+                } else {
+                    locationPermission.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     private fun hasPermission(permission: String): Boolean =
@@ -1558,11 +1583,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         totalMl += amount
         saveTodayEntries(entries)
 
-        if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false) &&
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val locationMode = prefs.getString("location_accuracy_mode", "precise") ?: "precise"
+        if (prefs.getBoolean("location_tagging", false) &&
             (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ||
                 hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))) {
             runCatching {
-                LocationServices.getFusedLocationProviderClient(this).lastLocation
+                val priority = if (locationMode == "approximate" || !hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))
+                    Priority.PRIORITY_BALANCED_POWER_ACCURACY else Priority.PRIORITY_HIGH_ACCURACY
+                val tokenSource = com.google.android.gms.tasks.CancellationTokenSource()
+                LocationServices.getFusedLocationProviderClient(this)
+                    .getCurrentLocation(priority, tokenSource.token)
                     .addOnSuccessListener { location ->
                         if (location != null) {
                             val latest = loadTodayEntries()
@@ -1572,13 +1603,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                                     saved.put("latitude", location.latitude)
                                     saved.put("longitude", location.longitude)
                                     saved.put("location_accuracy_m", location.accuracy.toInt())
+                                    saved.put("location_mode", if (priority == Priority.PRIORITY_HIGH_ACCURACY) "precise" else "approximate")
                                     saveTodayEntries(latest)
                                     refreshHistoryDisplay()
                                     break
                                 }
                             }
                         } else {
-                            runOnUiThread { toast("Entry saved, but location was unavailable. Check that Android Location is enabled and try the next entry.") }
+                            runOnUiThread { toast("Entry saved, but location was unavailable. Check Android Location and try again.") }
                         }
                     }
                     .addOnFailureListener {
@@ -1851,10 +1883,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun updateLocationStatus() {
         val coarse = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
         val fine = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+        val enabled = getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)
         locationText.text = when {
-            fine -> "Location access: allowed (precise permission)"
-            coarse -> "Location access: allowed (approximate permission)"
-            else -> "Location access: not allowed"
+            enabled && fine -> "Location tagging: ON (Precise)"
+            enabled && coarse -> "Location tagging: ON (Approximate)"
+            else -> "Location tagging: OFF"
         }
     }
 
