@@ -936,15 +936,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(8), dp(4), dp(8))
         }
         content.addView(status)
-        val actions = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
         val scanButton = com.google.android.material.button.MaterialButton(this).apply {
             text = "Scan barcode / QR code"
             isAllCaps = false
             setOnClickListener {
                 lastScannedValue = null
-                status.text = "Scanning… Point the camera at a barcode or QR code."
+                status.text = "Scanning… Point the camera at the bottle barcode or QR code."
                 cameraAnalysis?.clearAnalyzer()
                 cameraAnalysis?.setAnalyzer(cameraExecutor) { proxy ->
                     val media = proxy.image
@@ -953,10 +950,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     (cameraScanner ?: BarcodeScanning.getClient().also { cameraScanner = it })
                         .process(input)
                         .addOnSuccessListener { codes ->
-                            val value = codes.firstOrNull()?.rawValue
+                            val value = codes.firstOrNull()?.rawValue?.trim()
                             if (!value.isNullOrBlank() && value != lastScannedValue) {
                                 lastScannedValue = value
-                                runOnUiThread { status.text = "Barcode / QR result: $value" }
+                                cameraAnalysis?.clearAnalyzer()
+                                runOnUiThread { registerScannedBottle(value, status) }
                             }
                         }
                         .addOnFailureListener { error ->
@@ -966,50 +964,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 }
             }
         }
-        val photoButton = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Take a water bottle photo"
-            isAllCaps = false
-            setOnClickListener {
-                val capture = cameraImageCapture
-                if (capture == null) {
-                    status.text = "Camera is not ready yet."
-                } else {
-                    status.text = "Capturing photo…"
-                    capture.takePicture(cameraExecutor,
-                        object : androidx.camera.core.ImageCapture.OnImageCapturedCallback() {
-                            override fun onCaptureSuccess(image: androidx.camera.core.ImageProxy) {
-                                val bitmap = image.toBitmap()
-                                image.close()
-                                runOnUiThread {
-                                    val imageView = android.widget.ImageView(this@MainActivity).apply {
-                                        setImageBitmap(bitmap)
-                                        adjustViewBounds = true
-                                        maxHeight = dp(420)
-                                    }
-                                    AlertDialog.Builder(this@MainActivity)
-                                        .setTitle("Captured water bottle photo")
-                                        .setView(ScrollView(this@MainActivity).apply { addView(imageView) })
-                                        .setPositiveButton("Close", null)
-                                        .show()
-                                    status.text = "Photo captured successfully."
-                                }
-                            }
-                            override fun onError(exception: androidx.camera.core.ImageCaptureException) {
-                                runOnUiThread { status.text = "Photo capture failed: ${exception.localizedMessage ?: "Please try again."}" }
-                            }
-                        })
-                }
-            }
+        content.addView(scanButton, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        val note = TextView(this).apply {
+            text = "After you have drunk all the water from the bottle, take a photo of the empty bottle if you want a visual record."
+            textSize = 13f
+            setPadding(dp(4), dp(10), dp(4), dp(4))
         }
-        actions.addView(scanButton, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
-        actions.addView(photoButton, LinearLayout.LayoutParams(-1, -2))
-        content.addView(actions)
+        content.addView(note)
         cameraDialog = AlertDialog.Builder(this).setTitle("Camera Tools").setView(content)
             .setNegativeButton("Close", null).create()
         cameraDialog?.setOnDismissListener {
-            try {
-                ProcessCameraProvider.getInstance(this).get().unbindAll()
-            } catch (_: Exception) { }
+            try { ProcessCameraProvider.getInstance(this).get().unbindAll() } catch (_: Exception) { }
             cameraStarted = false
             cameraImageCapture = null
             cameraAnalysis = null
@@ -1020,6 +985,50 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         startCameraToolsPreview(preview, status)
     }
 
+    private fun registerScannedBottle(code: String, status: TextView) {
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val savedCapacity = prefs.getInt("barcode_capacity_$code", 0)
+        if (savedCapacity > 0) {
+            addWater(savedCapacity)
+            status.text = "Added $savedCapacity ml to today's water record."
+            toast("$savedCapacity ml added from scanned bottle.")
+            return
+        }
+        val match = Regex("(?i)(\\d{2,5})\\s*(?:ml|m\\.l\\.)").find(code)
+        val detectedCapacity = match?.groupValues?.getOrNull(1)?.toIntOrNull()
+        if (detectedCapacity != null && detectedCapacity in 1..10000) {
+            prefs.edit().putInt("barcode_capacity_$code", detectedCapacity).apply()
+            addWater(detectedCapacity)
+            status.text = "Added $detectedCapacity ml to today's water record."
+            toast("$detectedCapacity ml added from scanned code.")
+            return
+        }
+        val input = android.widget.EditText(this).apply {
+            hint = "Bottle capacity in ml (e.g. 500)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Bottle capacity")
+            .setMessage("This barcode identifies the product but does not contain its water volume. Enter the bottle capacity once; it will be remembered for this code.")
+            .setView(input)
+            .setNegativeButton("Cancel") { _, _ ->
+                status.text = "No water entry added. Scan again when ready."
+            }
+            .setPositiveButton("Add entry") { _, _ ->
+                val amount = input.text.toString().toIntOrNull()
+                if (amount == null || amount !in 1..10000) {
+                    toast("Please enter a valid bottle capacity in ml.")
+                    status.text = "Bottle capacity was not valid. Scan again to retry."
+                } else {
+                    prefs.edit().putInt("barcode_capacity_$code", amount).apply()
+                    addWater(amount)
+                    status.text = "Added $amount ml to today's water record."
+                    toast("$amount ml added. This barcode's capacity has been saved.")
+                }
+            }
+            .show()
+    }
+
     private fun startCameraToolsPreview(previewView: PreviewView, status: TextView) {
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
@@ -1028,18 +1037,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 val preview = Preview.Builder().build().also {
                     it.setSurfaceProvider(previewView.surfaceProvider)
                 }
-                val capture = androidx.camera.core.ImageCapture.Builder()
-                    .setCaptureMode(androidx.camera.core.ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .build()
                 val analysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .build()
                 provider.unbindAll()
-                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, capture, analysis)
-                cameraImageCapture = capture
+                provider.bindToLifecycle(this, CameraSelector.DEFAULT_BACK_CAMERA, preview, analysis)
                 cameraAnalysis = analysis
                 cameraStarted = true
-                status.text = "Camera ready. Choose an action below."
+                status.text = "Camera ready. Tap Scan barcode / QR code."
             } catch (error: Exception) {
                 cameraStarted = false
                 status.text = "Unable to start camera: ${error.localizedMessage ?: "Camera unavailable."}"
@@ -1066,14 +1071,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         content.addView(historyText)
         addSectionTitle(content, "Camera tools")
         addButton(content, "▦  Scan barcode / QR code") {
-            scanningExternalCamera = true
-            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
-            else cameraPermission.launch(Manifest.permission.CAMERA)
-        }
-        addButton(content, "📷  Take a water bottle photo", secondary = true) {
-            scanningExternalCamera = false
-            if (hasPermission(Manifest.permission.CAMERA)) photoPicker.launch(null)
-            else cameraPermission.launch(Manifest.permission.CAMERA)
+            showCameraToolsDialog()
         }
         updateLocationStatus()
         val scroll = ScrollView(this).apply { addView(content) }
