@@ -1928,7 +1928,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         String.format(Locale.US, "\nLocation: %.4f, %.4f", item.optDouble("latitude"), item.optDouble("longitude"))
                     } else ""
                     detail.addView(TextView(this).apply {
-                        text = "• $time — \${item.optInt("amount")} ml$location"
+                        text = "• $time — ${item.optInt("amount")} ml$location"
                         textSize = 13f
                         setPadding(0, dp(8), 0, dp(8))
                     })
@@ -1975,7 +1975,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                         val amount = if (key == todayDate) totalMl else prefs.getInt("total_ml_$key", totals[key] ?: 0)
                         val isFuture = date.after(today)
                         val cell = TextView(this).apply {
-                            text = if (amount > 0) "$cellDay\n\${amount}ml" else cellDay.toString()
+                            text = if (amount > 0) "$cellDay\n${amount}ml" else cellDay.toString()
                             textSize = if (amount > 0) 10.5f else 13f
                             gravity = android.view.Gravity.CENTER
                             minHeight = dp(62)
@@ -1993,7 +1993,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                             }
                             isEnabled = !isFuture
                             if (!isFuture) setOnClickListener { showDateEntries(date) }
-                            contentDescription = "$key, $amount ml, \${dayEntries.length()} entries"
+                            contentDescription = "$key, $amount ml, ${dayEntries.length()} entries"
                         }
                         row.addView(cell, android.widget.TableRow.LayoutParams(0, dp(62), 1f))
                         dayNumber++
