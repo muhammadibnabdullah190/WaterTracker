@@ -1764,7 +1764,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         val yearPicker = android.widget.NumberPicker(this).apply {
             minValue = 1900
             maxValue = currentYear
-            value = currentYear - 25
+            value = currentYear
             wrapSelectorWheel = false
         }
         content.addView(yearPicker)
