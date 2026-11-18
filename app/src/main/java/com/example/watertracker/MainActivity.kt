@@ -166,7 +166,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         heroContent.addView(logo)
         val heroText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         heroText.addView(TextView(this).apply {
-            text = "Water Tracker"
+            text = "Drinkable Water Reminder"
             textSize = 27f
             setTextColor(android.graphics.Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
@@ -252,7 +252,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         ) { toggleLocationTagging() }
         addDashboardButton(dashboardGrid, "Scan Barcode / QR Code", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
-        addDashboardButton(dashboardGrid, "Monthly Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
+        addDashboardButton(dashboardGrid, "Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
         addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_backup_restore)!!) { showBackupRestoreDialog() }
         addDashboardButton(dashboardGrid, "Accessibility Settings", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showAccessibilityDialog() }
@@ -1800,80 +1800,132 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         val birthYear = prefs.getInt("history_birth_year", Calendar.getInstance().get(Calendar.YEAR))
         val today = Calendar.getInstance()
-        val todayKeyValue = todayKey()
-        val allDays = linkedMapOf<String, Int>()
+        val todayDate = todayKey()
+        val totals = linkedMapOf<String, Int>()
         prefs.all.keys.filter { it.matches(Regex("total_ml_\\d{4}-\\d{2}-\\d{2}")) }.forEach { key ->
             val date = key.removePrefix("total_ml_")
-            val value = prefs.getInt(key, 0)
-            if (date.substring(0, 4).toIntOrNull()?.let { it >= birthYear } == true && value > 0) {
-                allDays[date] = value
+            if ((date.take(4).toIntOrNull() ?: 0) >= birthYear) {
+                val amount = prefs.getInt(key, 0)
+                if (amount > 0) totals[date] = amount
             }
         }
-        // Also recover totals from saved entry arrays, including dates without a total cache.
         prefs.all.keys.filter { it.matches(Regex("water_entries_\\d{4}-\\d{2}-\\d{2}")) }.forEach { key ->
             val date = key.removePrefix("water_entries_")
-            if ((date.substring(0, 4).toIntOrNull() ?: 0) >= birthYear) {
+            if ((date.take(4).toIntOrNull() ?: 0) >= birthYear) {
                 val entries = runCatching { JSONArray(prefs.getString(key, "[]") ?: "[]") }.getOrElse { JSONArray() }
-                val total = (0 until entries.length()).sumOf { entries.optJSONObject(it)?.optInt("amount", 0) ?: 0 }
-                if (total > 0) allDays[date] = total
+                val sum = (0 until entries.length()).sumOf { entries.optJSONObject(it)?.optInt("amount", 0) ?: 0 }
+                if (sum > 0) totals[date] = sum
             }
         }
-        allDays[todayKeyValue] = totalMl
-        fun totalWhere(test: (String) -> Boolean) = allDays.filterKeys(test).values.sum()
-        val year = today.get(Calendar.YEAR)
+        totals[todayDate] = totalMl
+        fun periodTotal(test: (String) -> Boolean) = totals.filterKeys(test).values.sum()
+        val currentYear = today.get(Calendar.YEAR)
         val monthPrefix = SimpleDateFormat("yyyy-MM", Locale.US).format(today.time)
         val monday = (today.clone() as Calendar).apply {
-            val day = get(Calendar.DAY_OF_WEEK)
-            add(Calendar.DAY_OF_YEAR, -((day + 5) % 7))
+            val dow = get(Calendar.DAY_OF_WEEK)
+            add(Calendar.DAY_OF_YEAR, -((dow + 5) % 7))
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
         }
         val weekStart = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(monday.time)
-        val weekEndCal = (monday.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }
-        val weekEnd = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(weekEndCal.time)
-        val dayTotal = allDays[todayKeyValue] ?: 0
-        val weekTotal = totalWhere { it >= weekStart && it < weekEnd }
-        val monthTotal = totalWhere { it.startsWith(monthPrefix) }
-        val yearTotal = totalWhere { it.startsWith(year.toString()) }
-
+        val weekEnd = SimpleDateFormat("yyyy-MM-dd", Locale.US).format((monday.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, 7) }.time)
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(10), dp(16), dp(12))
+            setPadding(dp(12), dp(8), dp(12), dp(12))
         }
-        fun addRecordLine(value: String, bold: Boolean = false) {
+        fun addSection(text: String) {
             content.addView(TextView(this).apply {
-                text = value
-                textSize = if (bold) 15f else 13f
-                setTextColor(android.graphics.Color.rgb(55, 83, 101))
-                setTypeface(typeface, if (bold) Typeface.BOLD else Typeface.NORMAL)
-                setPadding(dp(4), dp(6), dp(4), dp(6))
+                this.text = text
+                textSize = 14f
+                setTextColor(android.graphics.Color.rgb(35, 92, 120))
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(dp(4), dp(12), dp(4), dp(6))
             })
         }
-        addRecordLine("CURRENT HYDRATION", true)
-        addRecordLine("Today: $dayTotal ml")
-        addRecordLine("This week (Monday–Sunday): $weekTotal ml")
-        addRecordLine("This month: $monthTotal ml")
-        addRecordLine("This year ($year): $yearTotal ml")
-        addRecordLine("HISTORICAL RECORDS FROM $birthYear", true)
-        val yearlyTotals = (birthYear..year).map { yr ->
-            yr to totalWhere { it.startsWith(yr.toString()) }
-        }.filter { it.second > 0 }.asReversed()
-        if (yearlyTotals.isEmpty()) addRecordLine("No recorded water entries in this period yet.")
-        else yearlyTotals.forEach { (yr, amount) -> addRecordLine("$yr: $amount ml") }
-        addRecordLine("DAILY RECORDS", true)
-        if (allDays.isEmpty()) addRecordLine("No daily entries recorded yet.")
-        else allDays.toSortedMap(compareByDescending<String> { it }).forEach { (date, amount) ->
-            val formatted = runCatching {
-                SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(
-                    SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(date)!!
-                )
-            }.getOrDefault(date)
-            addRecordLine("$formatted — $amount ml")
+        fun addSummary(text: String) {
+            content.addView(TextView(this).apply {
+                this.text = text
+                textSize = 13f
+                setTextColor(android.graphics.Color.rgb(55, 83, 101))
+                setPadding(dp(4), dp(4), dp(4), dp(4))
+            })
         }
+        addSection("CURRENT HYDRATION")
+        addSummary("Today: ${totals[todayDate] ?: 0} ml")
+        addSummary("This week (Monday–Sunday): ${periodTotal { it >= weekStart && it < weekEnd }} ml")
+        addSummary("This month: ${periodTotal { it.startsWith(monthPrefix) }} ml")
+        addSummary("This year ($currentYear): ${periodTotal { it.startsWith(currentYear.toString()) }} ml")
+        addSection("YEARLY TOTALS FROM $birthYear")
+        val yearly = (birthYear..currentYear).map { yr -> yr to periodTotal { it.startsWith(yr.toString()) } }
+            .filter { it.second > 0 }.asReversed()
+        if (yearly.isEmpty()) addSummary("No recorded water intake yet.")
+        else yearly.forEach { (yr, amount) -> addSummary("$yr: $amount ml") }
+
+        addSection("DAILY ENTRY RECORDS • LAST 30 DAYS")
+        val table = android.widget.TableLayout(this).apply {
+            isStretchAllColumns = true
+            setPadding(0, dp(4), 0, dp(8))
+        }
+        fun addCell(row: android.widget.TableRow, value: String, bold: Boolean = false, color: Int = android.graphics.Color.rgb(55, 83, 101)) {
+            row.addView(TextView(this).apply {
+                text = value
+                textSize = 10.5f
+                setTextColor(color)
+                setTypeface(typeface, if (bold) Typeface.BOLD else Typeface.NORMAL)
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(dp(4), dp(7), dp(4), dp(7))
+            })
+        }
+        val header = android.widget.TableRow(this).apply {
+            setBackgroundColor(android.graphics.Color.rgb(220, 242, 249))
+        }
+        listOf("Date", "Time", "Entry", "Location", "Daily goal").forEach { addCell(header, it, true) }
+        table.addView(header)
+        for (offset in 0..29) {
+            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -offset) }
+            val key = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+            val dateLabel = SimpleDateFormat("dd MMM", Locale.getDefault()).format(cal.time)
+            val dayTotal = if (key == todayDate) totalMl else prefs.getInt("total_ml_$key", totals[key] ?: 0)
+            val dayEntries = runCatching { JSONArray(prefs.getString("water_entries_$key", "[]") ?: "[]") }.getOrElse { JSONArray() }
+            val completed = dayTotal >= dailyGoalMl
+            val goalLabel = if (completed) "✓ Done" else "✕ Not done"
+            val goalColor = if (completed) android.graphics.Color.rgb(35, 145, 75) else android.graphics.Color.rgb(205, 55, 55)
+            if (dayEntries.length() == 0) {
+                val row = android.widget.TableRow(this)
+                addCell(row, dateLabel)
+                addCell(row, "—")
+                addCell(row, if (dayTotal > 0) "$dayTotal ml total" else "No entries")
+                addCell(row, "—")
+                addCell(row, goalLabel, true, goalColor)
+                table.addView(row)
+            } else {
+                for (index in 0 until dayEntries.length()) {
+                    val entry = dayEntries.optJSONObject(index) ?: continue
+                    val row = android.widget.TableRow(this).apply {
+                        setBackgroundColor(if ((offset + index) % 2 == 0) android.graphics.Color.argb(24, 0, 135, 180) else android.graphics.Color.TRANSPARENT)
+                    }
+                    val time = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(entry.optLong("time")))
+                    val location = if (entry.has("latitude") && entry.has("longitude")) {
+                        String.format(Locale.US, "%.4f, %.4f", entry.optDouble("latitude"), entry.optDouble("longitude"))
+                    } else "—"
+                    addCell(row, dateLabel)
+                    addCell(row, time)
+                    addCell(row, "${entry.optInt("amount")} ml")
+                    addCell(row, location)
+                    addCell(row, goalLabel, true, goalColor)
+                    table.addView(row)
+                }
+            }
+            table.addView(android.view.View(this).apply {
+                setBackgroundColor(android.graphics.Color.argb(35, 40, 100, 125))
+                layoutParams = android.widget.TableLayout.LayoutParams(-1, dp(1))
+            })
+        }
+        content.addView(table)
         val scroll = ScrollView(this).apply {
             addView(content)
-            layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(480))
+            layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(520))
         }
-        AlertDialog.Builder(this).setTitle("Hydration records").setView(scroll)
+        AlertDialog.Builder(this).setTitle("Records").setView(scroll)
             .setPositiveButton("Close", null).show()
         applyViewOpacity(content, prefs.getInt("transparency_level", 75).coerceIn(0, 100))
     }
@@ -1934,7 +1986,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     toast("Today's entries reset.")
                 }.show()
         }
-        addButton(content, "Monthly records (last 30 days)", secondary = true) { showDailyHistory() }
+        addButton(content, "Records (last 30 days)", secondary = true) { showDailyHistory() }
         content.addView(historyText)
         val scroll = ScrollView(this).apply { addView(content) }
         AlertDialog.Builder(this).setTitle("Water Entries").setView(scroll)
