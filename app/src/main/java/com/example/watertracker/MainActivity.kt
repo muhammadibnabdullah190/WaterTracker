@@ -377,43 +377,129 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         var max: Int = 100
         var progress: Int = 0
             set(value) { field = value.coerceIn(0, max); invalidate() }
+        var consumedMl: Int = 0
+            set(value) { field = value.coerceAtLeast(0); invalidate() }
+        var goalMl: Int = 2000
+            set(value) { field = value.coerceAtLeast(1); invalidate() }
+        var periodLabel: String = "Today"
+            set(value) { field = value; invalidate() }
+        private var wavePhase = 0f
+        private val waveAnimator = android.animation.ValueAnimator.ofFloat(0f, (Math.PI * 2).toFloat()).apply {
+            duration = 2400L
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener {
+                wavePhase = it.animatedValue as Float
+                invalidate()
+            }
+        }
         private val track = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(10).toFloat()
+            strokeWidth = dp(8).toFloat()
             strokeCap = android.graphics.Paint.Cap.ROUND
             color = android.graphics.Color.rgb(218, 239, 247)
         }
-        private val fill = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        private val ring = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(10).toFloat()
+            strokeWidth = dp(8).toFloat()
             strokeCap = android.graphics.Paint.Cap.ROUND
             color = android.graphics.Color.rgb(0, 145, 190)
         }
-        private val label = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        private val waterPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.FILL
+            color = android.graphics.Color.rgb(42, 177, 218)
+        }
+        private val wavePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            style = android.graphics.Paint.Style.FILL
+            color = android.graphics.Color.rgb(105, 211, 235)
+        }
+        private val percentPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
             color = android.graphics.Color.rgb(20, 75, 102)
             textAlign = android.graphics.Paint.Align.CENTER
-            textSize = dp(23).toFloat()
+            textSize = dp(19).toFloat()
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
-        private val subLabel = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.rgb(83, 112, 130)
+        private val amountPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(20, 75, 102)
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = dp(11).toFloat()
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
+        private val periodPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(83, 112, 130)
+            textAlign = android.graphics.Paint.Align.CENTER
+            textSize = dp(10).toFloat()
+        }
+
+        override fun onAttachedToWindow() {
+            super.onAttachedToWindow()
+            if (!waveAnimator.isStarted) waveAnimator.start()
+        }
+
+        override fun onDetachedFromWindow() {
+            waveAnimator.cancel()
+            super.onDetachedFromWindow()
+        }
+
         override fun onDraw(canvas: android.graphics.Canvas) {
             super.onDraw(canvas)
             val side = minOf(width, height).toFloat()
-            val inset = track.strokeWidth / 2f + dp(3)
-            val rect = android.graphics.RectF(
-                (width - side) / 2f + inset, (height - side) / 2f + inset,
-                (width + side) / 2f - inset, (height + side) / 2f - inset
-            )
-            canvas.drawArc(rect, -90f, 360f, false, track)
-            canvas.drawArc(rect, -90f, 360f * progress / max.coerceAtLeast(1), false, fill)
+            if (side <= 0f) return
             val centerX = width / 2f
             val centerY = height / 2f
-            canvas.drawText("$progress%", centerX, centerY + dp(1).toFloat(), label)
-            canvas.drawText("of daily goal", centerX, centerY + dp(19).toFloat(), subLabel)
+            val outerRadius = side / 2f - track.strokeWidth / 2f - dp(2)
+            val innerRadius = outerRadius - dp(10)
+            val percent = ((consumedMl.toFloat() / goalMl.coerceAtLeast(1)) * 100f).toInt()
+            val fraction = (consumedMl.toFloat() / goalMl.coerceAtLeast(1)).coerceIn(0f, 1f)
+
+            canvas.drawCircle(centerX, centerY, outerRadius, track)
+            canvas.drawArc(
+                centerX - outerRadius, centerY - outerRadius,
+                centerX + outerRadius, centerY + outerRadius,
+                -90f, 360f * fraction, false, ring
+            )
+
+            val clip = android.graphics.Path().apply {
+                addCircle(centerX, centerY, innerRadius, android.graphics.Path.Direction.CW)
+            }
+            val save = canvas.save()
+            canvas.clipPath(clip)
+            val waterTop = centerY + innerRadius - (2f * innerRadius * fraction)
+            val waveHeight = dp(3).toFloat()
+            val wave = android.graphics.Path().apply {
+                moveTo(centerX - innerRadius, waterTop)
+                for (step in 0..40) {
+                    val x = centerX - innerRadius + (2f * innerRadius * step / 40f)
+                    val y = waterTop + kotlin.math.sin((step / 40f * Math.PI * 2.0) + wavePhase).toFloat() * waveHeight
+                    lineTo(x, y)
+                }
+                lineTo(centerX + innerRadius, centerY + innerRadius)
+                lineTo(centerX - innerRadius, centerY + innerRadius)
+                close()
+            }
+            canvas.drawPath(wave, waterPaint)
+            val secondWave = android.graphics.Path().apply {
+                moveTo(centerX - innerRadius, waterTop + waveHeight * 0.65f)
+                for (step in 0..40) {
+                    val x = centerX - innerRadius + (2f * innerRadius * step / 40f)
+                    val y = waterTop + waveHeight * 0.65f +
+                        kotlin.math.sin((step / 40f * Math.PI * 2.0) - wavePhase * 0.8f).toFloat() * waveHeight * 0.55f
+                    lineTo(x, y)
+                }
+                lineTo(centerX + innerRadius, centerY + innerRadius)
+                lineTo(centerX - innerRadius, centerY + innerRadius)
+                close()
+            }
+            canvas.drawPath(secondWave, wavePaint)
+            canvas.restoreToCount(save)
+
+            val textColor = if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(20, 75, 102)
+            percentPaint.color = textColor
+            amountPaint.color = textColor
+            periodPaint.color = if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(83, 112, 130)
+            canvas.drawText("$percent%", centerX, centerY - dp(5).toFloat(), percentPaint)
+            canvas.drawText("$consumedMl / $goalMl ml", centerX, centerY + dp(11).toFloat(), amountPaint)
+            canvas.drawText(periodLabel, centerX, centerY + dp(25).toFloat(), periodPaint)
         }
     }
 
@@ -1681,7 +1767,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         totalText.text = "$totalMl ml"
         val percent = ((totalMl * 100) / dailyGoalMl).coerceAtMost(100)
         progressText.text = "$percent% of your $dailyGoalMl ml daily goal"
-        if (::waterProgress.isInitialized) waterProgress.progress = percent
+        if (::waterProgress.isInitialized) {
+            waterProgress.progress = percent
+            waterProgress.consumedMl = totalMl
+            waterProgress.goalMl = dailyGoalMl
+            waterProgress.periodLabel = "Today"
+        }
     }
 
     private fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
@@ -1850,10 +1941,46 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             })
         }
         addSection("CURRENT HYDRATION")
-        addSummary("Today: ${totals[todayDate] ?: 0} ml")
-        addSummary("This week (Monday–Sunday): ${periodTotal { it >= weekStart && it < weekEnd }} ml")
-        addSummary("This month: ${periodTotal { it.startsWith(monthPrefix) }} ml")
-        addSummary("This year ($currentYear): ${periodTotal { it.startsWith(currentYear.toString()) }} ml")
+        val weekTotal = periodTotal { it >= weekStart && it < weekEnd }
+        val monthTotal = periodTotal { it.startsWith(monthPrefix) }
+        val yearTotal = periodTotal { it.startsWith(currentYear.toString()) }
+        val progressGrid = android.widget.GridLayout(this).apply {
+            columnCount = 2
+            useDefaultMargins = false
+            alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+        }
+        fun addHydrationCircle(label: String, amount: Int, goal: Int) {
+            val card = com.google.android.material.card.MaterialCardView(this).apply {
+                radius = dp(18).toFloat()
+                cardElevation = 0f
+                strokeWidth = dp(1)
+                setStrokeColor(android.graphics.Color.rgb(225, 237, 243))
+                setCardBackgroundColor(android.graphics.Color.rgb(248, 252, 254))
+                val params = android.widget.GridLayout.LayoutParams().apply {
+                    width = 0
+                    height = dp(148)
+                    columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                    setMargins(dp(4), dp(4), dp(4), dp(4))
+                }
+                layoutParams = params
+            }
+            val circle = CircularHydrationProgressView(this).apply {
+                consumedMl = amount
+                goalMl = goal
+                progress = ((amount * 100) / goal.coerceAtLeast(1)).coerceAtMost(100)
+                periodLabel = label
+                layoutParams = LinearLayout.LayoutParams(dp(132), dp(132)).apply {
+                    gravity = android.view.Gravity.CENTER
+                }
+            }
+            card.addView(circle)
+            progressGrid.addView(card)
+        }
+        addHydrationCircle("Today", totals[todayDate] ?: 0, dailyGoalMl)
+        addHydrationCircle("This week", weekTotal, dailyGoalMl * 7)
+        addHydrationCircle("This month", monthTotal, dailyGoalMl * today.getActualMaximum(Calendar.DAY_OF_MONTH))
+        addHydrationCircle("This year", yearTotal, dailyGoalMl * (if (today.getActualMaximum(Calendar.DAY_OF_YEAR) == 366) 366 else 365))
+        content.addView(progressGrid)
         addSection("YEARLY TOTALS FROM $birthYear")
         val yearly = (birthYear..currentYear).map { yr -> yr to periodTotal { it.startsWith(yr.toString()) } }
             .filter { it.second > 0 }.asReversed()
