@@ -255,7 +255,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         page.addView(themeGrid)
 
         val dashboardGrid = android.widget.GridLayout(this).apply {
-            columnCount = 2
+            // One full-width column avoids hiding alternating controls on some device widths.
+            columnCount = 1
             rowCount = android.widget.GridLayout.UNDEFINED
             useDefaultMargins = false
             alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
