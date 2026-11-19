@@ -1250,7 +1250,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun checkForAppUpdate() {
-        toast("Checking for the latest Drinkable Water Reminder update…")
         Thread {
             try {
                 val repository = "muhammadibnabdullah190/WaterTracker"
@@ -1271,7 +1270,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     api.disconnect()
                     val release = JSONObject(body)
                     releaseName = release.optString("name").takeIf { it.isNotBlank() } ?: release.optString("tag_name")
-                    notes = release.optString("body").takeIf { it != "null" }?.trim().orEmpty()
+                    notes = release.optString("body").trim().takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }.orEmpty()
                     val assets = release.optJSONArray("assets") ?: JSONArray()
                     for (i in 0 until assets.length()) {
                         val asset = assets.optJSONObject(i) ?: continue
@@ -1319,18 +1318,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setTextColor(android.graphics.Color.rgb(25, 75, 100))
             setTypeface(typeface, Typeface.BOLD)
         })
-        val updateItems = if (notes.isNotBlank()) {
+        val updateItems = if (notes.isNotBlank() && !notes.trim().equals("null", ignoreCase = true)) {
             notes.lines().map { it.trim() }
-                .filter { it.isNotBlank() && !it.startsWith("#") && !it.startsWith("<!--") }
+                .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) && !it.startsWith("#") && !it.startsWith("<!--") }
                 .map { it.removePrefix("- ").removePrefix("* ").removePrefix("• ").trim() }
-                .filter { it.isNotBlank() }
+                .filter { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+                .ifEmpty { listOf("No release notes were provided for this build. Please review the changes on GitHub before approving.") }
         } else {
-            listOf(
-                "Improved individual water-entry records and location tagging.",
-                "Monthly records now show each entry separately with its own time and location.",
-                "Daily goal completion is clearly marked.",
-                "General app stability and usability improvements."
-            )
+            listOf("No release notes were provided for this build. Please review the changes on GitHub before approving.")
         }
         content.addView(TextView(this).apply {
             text = "Updates included:\n" + updateItems.joinToString("\n") { "• $it" }
@@ -1346,7 +1341,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         content.addView(consent)
         val dialog = AlertDialog.Builder(this)
-            .setTitle("Water Tracker update")
+            .setTitle("Drinkable Water Reminder update")
             .setView(content)
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Done", null)
