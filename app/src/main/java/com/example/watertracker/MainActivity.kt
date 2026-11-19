@@ -1780,6 +1780,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun addWaterEntry(amount: Int, timestamp: Long) {
+        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+        val entryDay = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(timestamp))
+        val entryKey = entriesKey(entryDay)
         val entries = loadTodayEntries()
         val entryId = java.util.UUID.randomUUID().toString()
         val entry = JSONObject()
@@ -1787,83 +1790,101 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             .put("amount", amount)
             .put("time", timestamp)
         entries.put(entry)
-        totalMl += amount
-        saveTodayEntries(entries)
 
-        val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
-        val locationMode = prefs.getString("location_accuracy_mode", "precise") ?: "precise"
-        val entryDay = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(timestamp))
-        if (prefs.getBoolean("location_tagging", false) &&
-            (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ||
-                hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))) {
-            runCatching {
-                val preciseGranted = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
-                val usePrecise = locationMode == "precise" && preciseGranted
-                val priority = if (usePrecise) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        // Commit the water entry before requesting location so the asynchronous
+        // location callback can always find and update this exact entry.
+        val entrySaved = prefs.edit().putString(entryKey, entries.toString()).commit()
+        if (!entrySaved) {
+            toast("Could not safely save this water entry. Please try again.")
+            return
+        }
+
+        totalMl += amount
+        saveTodayTotal()
+
+        if (prefs.getBoolean("location_tagging", false)) {
+            val hasCoarse = hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION)
+            val hasFine = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+            if (!hasCoarse && !hasFine) {
+                toast("Water entry saved. Location permission is missing; enable it in Android Settings.")
+            } else {
+                val usePrecise = prefs.getString("location_accuracy_mode", "precise") == "precise" && hasFine
+                val priority = if (usePrecise) Priority.PRIORITY_HIGH_ACCURACY
+                    else Priority.PRIORITY_BALANCED_POWER_ACCURACY
                 val client = LocationServices.getFusedLocationProviderClient(this)
-                val tokenSource = com.google.android.gms.tasks.CancellationTokenSource()
-                client.getCurrentLocation(priority, tokenSource.token)
-                    .addOnSuccessListener { current ->
-                        val saveLocation: (android.location.Location?) -> Unit = { location ->
-                            if (location != null) {
-                                val key = "water_entries_$entryDay"
-                                val latest = runCatching {
-                                    JSONArray(prefs.getString(key, "[]") ?: "[]")
-                                }.getOrElse { JSONArray() }
-                                var entryMatched = false
-                                for (i in 0 until latest.length()) {
-                                    val saved = latest.optJSONObject(i)
-                                    if (saved?.optString("entry_id") == entryId) {
-                                        saved.put("latitude", location.latitude)
-                                        saved.put("longitude", location.longitude)
-                                        saved.put("location_accuracy_m", location.accuracy.toInt())
-                                        saved.put("location_mode", if (usePrecise) "precise" else "approximate")
-                                        entryMatched = true
-                                        break
-                                    }
-                                }
-                                if (entryMatched) {
-                                    prefs.edit().putString(key, latest.toString()).commit()
-                                    runOnUiThread { refreshHistoryDisplay() }
-                                } else {
-                                    runOnUiThread { toast("Location was received, but this entry could not be matched. Its water amount is still saved.") }
-                                }
+
+                fun persistLocation(location: android.location.Location?) {
+                    if (location == null) {
+                        runOnUiThread {
+                            toast("Water entry saved, but location is unavailable. Check that Android Location is turned on.")
+                        }
+                        return
+                    }
+                    val latest = runCatching {
+                        JSONArray(prefs.getString(entryKey, "[]") ?: "[]")
+                    }.getOrElse { JSONArray() }
+                    var matched = false
+                    for (i in 0 until latest.length()) {
+                        val saved = latest.optJSONObject(i)
+                        if (saved?.optString("entry_id") == entryId) {
+                            saved.put("latitude", location.latitude)
+                            saved.put("longitude", location.longitude)
+                            saved.put("location_accuracy_m", location.accuracy.toInt())
+                            saved.put("location_mode", if (usePrecise) "precise" else "approximate")
+                            matched = true
+                            break
+                        }
+                    }
+                    if (matched) {
+                        val committed = prefs.edit().putString(entryKey, latest.toString()).commit()
+                        runOnUiThread {
+                            if (committed) {
+                                refreshHistoryDisplay()
+                                toast("Location saved with this entry.")
                             } else {
-                                runOnUiThread { toast("Water entry saved, but location is unavailable. Turn on Android Location and try again.") }
+                                toast("Water entry saved, but its location could not be stored.")
                             }
                         }
-                        if (current != null) saveLocation(current)
-                        else client.lastLocation
-                            .addOnSuccessListener { last -> saveLocation(last) }
-                            .addOnFailureListener {
-                                runOnUiThread { toast("Water entry saved, but Android could not provide a location.") }
-                            }
+                    } else {
+                        runOnUiThread {
+                            toast("Water entry saved, but its location could not be attached to the entry.")
+                        }
                     }
-                    .addOnFailureListener {
-                        client.lastLocation.addOnSuccessListener { last ->
-                            if (last != null) {
-                                val key = "water_entries_$entryDay"
-                                val latest = runCatching { JSONArray(prefs.getString(key, "[]") ?: "[]") }.getOrElse { JSONArray() }
-                                for (i in 0 until latest.length()) {
-                                    val saved = latest.optJSONObject(i)
-                                    if (saved?.optString("entry_id") == entryId) {
-                                        saved.put("latitude", last.latitude)
-                                        saved.put("longitude", last.longitude)
-                                        saved.put("location_accuracy_m", last.accuracy.toInt())
-                                        saved.put("location_mode", if (usePrecise) "precise" else "approximate")
-                                        prefs.edit().putString(key, latest.toString()).commit()
-                                        runOnUiThread { refreshHistoryDisplay() }
-                                        break
+                }
+
+                try {
+                    val tokenSource = com.google.android.gms.tasks.CancellationTokenSource()
+                    client.getCurrentLocation(priority, tokenSource.token)
+                        .addOnSuccessListener { current ->
+                            if (current != null) {
+                                persistLocation(current)
+                            } else {
+                                client.lastLocation
+                                    .addOnSuccessListener { last -> persistLocation(last) }
+                                    .addOnFailureListener {
+                                        runOnUiThread {
+                                            toast("Water entry saved, but Android could not provide a location.")
+                                        }
+                                    }
+                            }
+                        }
+                        .addOnFailureListener {
+                            client.lastLocation
+                                .addOnSuccessListener { last -> persistLocation(last) }
+                                .addOnFailureListener {
+                                    runOnUiThread {
+                                        toast("Water entry saved, but Android could not provide a location.")
                                     }
                                 }
-                            } else runOnUiThread { toast("Water entry saved, but location could not be retrieved.") }
                         }
-                    }
-            }.onFailure {
-                toast("Water entry saved, but location could not be retrieved.")
+                } catch (e: SecurityException) {
+                    toast("Water entry saved, but Android location permission is unavailable.")
+                } catch (e: Exception) {
+                    toast("Water entry saved, but location could not be retrieved.")
+                }
             }
         }
-        saveTodayTotal()
+
         refreshWaterDisplay()
         refreshHistoryDisplay()
     }
@@ -1913,7 +1934,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         return runCatching { JSONArray(raw) }.getOrElse { JSONArray() }
     }
     private fun saveTodayEntries(entries: JSONArray) {
-        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString(entriesKey(), entries.toString()).apply()
+        getSharedPreferences("water_tracker", MODE_PRIVATE).edit().putString(entriesKey(), entries.toString()).commit()
     }
 
     private fun refreshHistoryDisplay() {
