@@ -1794,6 +1794,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                                 val latest = runCatching {
                                     JSONArray(prefs.getString(key, "[]") ?: "[]")
                                 }.getOrElse { JSONArray() }
+                                var entryMatched = false
                                 for (i in 0 until latest.length()) {
                                     val saved = latest.optJSONObject(i)
                                     if (saved?.optString("entry_id") == entryId) {
@@ -1801,12 +1802,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                                         saved.put("longitude", location.longitude)
                                         saved.put("location_accuracy_m", location.accuracy.toInt())
                                         saved.put("location_mode", if (usePrecise) "precise" else "approximate")
-                                        prefs.edit().putString(key, latest.toString()).commit()
-                                        runOnUiThread { refreshHistoryDisplay() }
-                                        return@addOnSuccessListener
+                                        entryMatched = true
+                                        break
                                     }
                                 }
-                                runOnUiThread { toast("Location was received, but this entry could not be matched. Its water amount is still saved.") }
+                                if (entryMatched) {
+                                    prefs.edit().putString(key, latest.toString()).commit()
+                                    runOnUiThread { refreshHistoryDisplay() }
+                                } else {
+                                    runOnUiThread { toast("Location was received, but this entry could not be matched. Its water amount is still saved.") }
+                                }
                             } else {
                                 runOnUiThread { toast("Water entry saved, but location is unavailable. Turn on Android Location and try again.") }
                             }
