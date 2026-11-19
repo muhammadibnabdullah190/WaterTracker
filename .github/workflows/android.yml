@@ -56,7 +56,7 @@ jobs:
           tag_name: watertracker-build-${{ github.run_number }}
           name: Water Tracker verified build ${{ github.run_number }}
           body: |
-            App-Version-Code: 19
+            App-Version-Code: 20
 
             - Fix update check so installed version is compared with the latest release.
             - Show yearly hydration totals as circular progress indicators.
