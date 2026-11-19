@@ -1255,6 +1255,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 val repository = "muhammadibnabdullah190/WaterTracker"
                 var releaseName = ""
                 var notes = ""
+                var latestVersionCode: Long? = null
                 var downloadUrl: String? = null
                 var apiFailure: Exception? = null
                 try {
@@ -1271,6 +1272,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     val release = JSONObject(body)
                     releaseName = release.optString("name").takeIf { it.isNotBlank() } ?: release.optString("tag_name")
                     notes = release.optString("body").trim().takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }.orEmpty()
+                    latestVersionCode = Regex("(?im)^App-Version-Code:\\s*(\\d+)\\s*$")
+                        .find(notes)?.groupValues?.getOrNull(1)?.toLongOrNull()
                     val assets = release.optJSONArray("assets") ?: JSONArray()
                     for (i in 0 until assets.length()) {
                         val asset = assets.optJSONObject(i) ?: continue
@@ -1301,7 +1304,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     downloadUrl = "https://github.com/$repository/releases/latest/download/app-debug.apk"
                 }
                 val finalUrl = downloadUrl ?: throw IllegalStateException("No APK download link was found.")
-                runOnUiThread { showUpdateConsentDialog(releaseName, notes, finalUrl) }
+                val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    packageManager.getPackageInfo(packageName, 0).longVersionCode
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
+                }
+                if (latestVersionCode != null && latestVersionCode!! <= installedVersionCode) {
+                    runOnUiThread { toast("You're using the latest version ($releaseName). No update is available.") }
+                    return@Thread
+                }
+                runOnUiThread {
+                    val displayNotes = notes.replace(Regex("(?im)^App-Version-Code:\\s*\\d+\\s*$"), "").trim()
+                    showUpdateConsentDialog(releaseName, displayNotes, finalUrl)
+                }
             } catch (e: Exception) {
                 runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please check your mobile data and try again."}") }
             }
@@ -2090,52 +2106,40 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (yearly.isEmpty()) {
             addSummary("No recorded water intake yet.")
         } else {
+            val yearlyProgressGrid = android.widget.GridLayout(this).apply {
+                columnCount = 2
+                useDefaultMargins = false
+                alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+            }
             yearly.forEach { (yr, amount) ->
                 val yearCalendar = Calendar.getInstance().apply { set(Calendar.YEAR, yr) }
                 val annualGoal = dailyGoalMl * yearCalendar.getActualMaximum(Calendar.DAY_OF_YEAR)
-                val percent = ((amount.toLong() * 100L) / annualGoal.coerceAtLeast(1)).toInt()
-                val yearCard = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL
-                    setPadding(dp(10), dp(9), dp(10), dp(9))
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(android.graphics.Color.rgb(248, 252, 254))
-                        cornerRadius = dp(12).toFloat()
-                        setStroke(dp(1), android.graphics.Color.rgb(225, 237, 243))
-                    }
-                    layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
-                        setMargins(dp(3), dp(4), dp(3), dp(4))
-                    }
-                }
-                yearCard.addView(TextView(this).apply {
-                    text = "$yr  •  ${amount} ml / ${annualGoal} ml"
-                    textSize = 13f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(android.graphics.Color.rgb(45, 75, 94))
-                })
-                val annualProgress = android.widget.ProgressBar(
-                    this, null, android.R.attr.progressBarStyleHorizontal
-                ).apply {
-                    max = 100
-                    progress = percent.coerceIn(0, 100)
-                    progressTintList = android.content.res.ColorStateList.valueOf(
-                        android.graphics.Color.rgb(0, 145, 190)
-                    )
-                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(
-                        android.graphics.Color.rgb(220, 235, 242)
-                    )
-                    layoutParams = LinearLayout.LayoutParams(-1, dp(10)).apply {
-                        topMargin = dp(8)
+                val yearCard = com.google.android.material.card.MaterialCardView(this).apply {
+                    radius = dp(18).toFloat()
+                    cardElevation = 0f
+                    strokeWidth = dp(1)
+                    setStrokeColor(android.graphics.Color.rgb(225, 237, 243))
+                    setCardBackgroundColor(android.graphics.Color.rgb(248, 252, 254))
+                    layoutParams = android.widget.GridLayout.LayoutParams().apply {
+                        width = 0
+                        height = dp(158)
+                        columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                        setMargins(dp(4), dp(4), dp(4), dp(4))
                     }
                 }
-                yearCard.addView(annualProgress)
-                yearCard.addView(TextView(this).apply {
-                    text = "$percent% of annual goal"
-                    textSize = 11f
-                    setTextColor(android.graphics.Color.rgb(83, 112, 130))
-                    setPadding(0, dp(5), 0, 0)
-                })
-                content.addView(yearCard)
+                val annualCircle = CircularHydrationProgressView(this).apply {
+                    consumedMl = amount
+                    goalMl = annualGoal
+                    progress = ((amount.toLong() * 100L) / annualGoal.coerceAtLeast(1)).toInt().coerceIn(0, 100)
+                    periodLabel = yr.toString()
+                    layoutParams = LinearLayout.LayoutParams(dp(142), dp(142)).apply {
+                        gravity = android.view.Gravity.CENTER
+                    }
+                }
+                yearCard.addView(annualCircle)
+                yearlyProgressGrid.addView(yearCard)
             }
+            content.addView(yearlyProgressGrid)
         }
 
         addSection("DAILY RECORDS • CALENDAR")
@@ -2301,12 +2305,34 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(4), dp(4), dp(4), dp(8))
         }
         val hydrationTab = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Daily Hydration"; isAllCaps = false
-            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(4) }
+            text = "Daily Hydration"
+            isAllCaps = false
+            textSize = 12f
+            maxLines = 2
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(5), dp(4), dp(5), dp(4))
+            insetTop = 0
+            insetBottom = 0
+            insetLeft = 0
+            insetRight = 0
+            minWidth = 0
+            minHeight = dp(62)
+            layoutParams = LinearLayout.LayoutParams(0, dp(62), 1f).apply { marginEnd = dp(5) }
         }
         val calendarTab = com.google.android.material.button.MaterialButton(this).apply {
-            text = "Daily Records – Calendar"; isAllCaps = false
-            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(4) }
+            text = "Daily Records\n– Calendar"
+            isAllCaps = false
+            textSize = 11f
+            maxLines = 2
+            gravity = android.view.Gravity.CENTER
+            setPadding(dp(5), dp(4), dp(5), dp(4))
+            insetTop = 0
+            insetBottom = 0
+            insetLeft = 0
+            insetRight = 0
+            minWidth = 0
+            minHeight = dp(62)
+            layoutParams = LinearLayout.LayoutParams(0, dp(62), 1f).apply { marginStart = dp(5) }
         }
         tabs.addView(hydrationTab)
         tabs.addView(calendarTab)
