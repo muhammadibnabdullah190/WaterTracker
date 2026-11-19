@@ -1776,39 +1776,70 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
         val locationMode = prefs.getString("location_accuracy_mode", "precise") ?: "precise"
+        val entryDay = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(timestamp))
         if (prefs.getBoolean("location_tagging", false) &&
             (hasPermission(Manifest.permission.ACCESS_COARSE_LOCATION) ||
                 hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))) {
             runCatching {
-                val priority = if (locationMode == "approximate" || !hasPermission(Manifest.permission.ACCESS_FINE_LOCATION))
-                    Priority.PRIORITY_BALANCED_POWER_ACCURACY else Priority.PRIORITY_HIGH_ACCURACY
+                val preciseGranted = hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)
+                val usePrecise = locationMode == "precise" && preciseGranted
+                val priority = if (usePrecise) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                val client = LocationServices.getFusedLocationProviderClient(this)
                 val tokenSource = com.google.android.gms.tasks.CancellationTokenSource()
-                LocationServices.getFusedLocationProviderClient(this)
-                    .getCurrentLocation(priority, tokenSource.token)
-                    .addOnSuccessListener { location ->
-                        if (location != null) {
-                            val latest = loadTodayEntries()
-                            for (i in 0 until latest.length()) {
-                                val saved = latest.optJSONObject(i)
-                                if (saved?.optString("entry_id") == entryId) {
-                                    saved.put("latitude", location.latitude)
-                                    saved.put("longitude", location.longitude)
-                                    saved.put("location_accuracy_m", location.accuracy.toInt())
-                                    saved.put("location_mode", if (priority == Priority.PRIORITY_HIGH_ACCURACY) "precise" else "approximate")
-                                    saveTodayEntries(latest)
-                                    refreshHistoryDisplay()
-                                    break
+                client.getCurrentLocation(priority, tokenSource.token)
+                    .addOnSuccessListener { current ->
+                        val saveLocation: (android.location.Location?) -> Unit = { location ->
+                            if (location != null) {
+                                val key = "water_entries_$entryDay"
+                                val latest = runCatching {
+                                    JSONArray(prefs.getString(key, "[]") ?: "[]")
+                                }.getOrElse { JSONArray() }
+                                for (i in 0 until latest.length()) {
+                                    val saved = latest.optJSONObject(i)
+                                    if (saved?.optString("entry_id") == entryId) {
+                                        saved.put("latitude", location.latitude)
+                                        saved.put("longitude", location.longitude)
+                                        saved.put("location_accuracy_m", location.accuracy.toInt())
+                                        saved.put("location_mode", if (usePrecise) "precise" else "approximate")
+                                        prefs.edit().putString(key, latest.toString()).commit()
+                                        runOnUiThread { refreshHistoryDisplay() }
+                                        return@addOnSuccessListener
+                                    }
                                 }
+                                runOnUiThread { toast("Location was received, but this entry could not be matched. Its water amount is still saved.") }
+                            } else {
+                                runOnUiThread { toast("Water entry saved, but location is unavailable. Turn on Android Location and try again.") }
                             }
-                        } else {
-                            runOnUiThread { toast("Entry saved, but location was unavailable. Check Android Location and try again.") }
                         }
+                        if (current != null) saveLocation(current)
+                        else client.lastLocation
+                            .addOnSuccessListener { last -> saveLocation(last) }
+                            .addOnFailureListener {
+                                runOnUiThread { toast("Water entry saved, but Android could not provide a location.") }
+                            }
                     }
                     .addOnFailureListener {
-                        runOnUiThread { toast("Entry saved, but its location could not be retrieved.") }
+                        client.lastLocation.addOnSuccessListener { last ->
+                            if (last != null) {
+                                val key = "water_entries_$entryDay"
+                                val latest = runCatching { JSONArray(prefs.getString(key, "[]") ?: "[]") }.getOrElse { JSONArray() }
+                                for (i in 0 until latest.length()) {
+                                    val saved = latest.optJSONObject(i)
+                                    if (saved?.optString("entry_id") == entryId) {
+                                        saved.put("latitude", last.latitude)
+                                        saved.put("longitude", last.longitude)
+                                        saved.put("location_accuracy_m", last.accuracy.toInt())
+                                        saved.put("location_mode", if (usePrecise) "precise" else "approximate")
+                                        prefs.edit().putString(key, latest.toString()).commit()
+                                        runOnUiThread { refreshHistoryDisplay() }
+                                        break
+                                    }
+                                }
+                            } else runOnUiThread { toast("Water entry saved, but location could not be retrieved.") }
+                        }
                     }
             }.onFailure {
-                toast("Entry saved, but its location could not be retrieved.")
+                toast("Water entry saved, but location could not be retrieved.")
             }
         }
         saveTodayTotal()
@@ -2206,8 +2237,54 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         renderCalendar()
         content.addView(calendarPanel)
+
+        // Two simple tabs keep hydration summaries separate from the calendar records.
+        val hydrationEndIndex = content.indexOfChild(progressGrid)
+        val calendarHeadingIndex = (0 until content.childCount).firstOrNull { index ->
+            (content.getChildAt(index) as? TextView)?.text?.toString() == "DAILY RECORDS • CALENDAR"
+        } ?: content.childCount
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(4), dp(4), dp(4), dp(8))
+        }
+        val hydrationTab = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Daily Hydration"; isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(4) }
+        }
+        val calendarTab = com.google.android.material.button.MaterialButton(this).apply {
+            text = "Daily Records – Calendar"; isAllCaps = false
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginStart = dp(4) }
+        }
+        tabs.addView(hydrationTab)
+        tabs.addView(calendarTab)
+        fun showRecordsTab(showHydration: Boolean) {
+            for (index in 0 until content.childCount) {
+                content.getChildAt(index).visibility =
+                    if (showHydration) {
+                        if (index < calendarHeadingIndex) android.view.View.VISIBLE else android.view.View.GONE
+                    } else {
+                        if (index >= calendarHeadingIndex) android.view.View.VISIBLE else android.view.View.GONE
+                    }
+            }
+            hydrationTab.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (showHydration) android.graphics.Color.rgb(0, 125, 166) else android.graphics.Color.LTGRAY
+            )
+            calendarTab.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                if (!showHydration) android.graphics.Color.rgb(0, 125, 166) else android.graphics.Color.LTGRAY
+            )
+            hydrationTab.setTextColor(if (showHydration) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY)
+            calendarTab.setTextColor(if (!showHydration) android.graphics.Color.WHITE else android.graphics.Color.DKGRAY)
+        }
+        hydrationTab.setOnClickListener { showRecordsTab(true) }
+        calendarTab.setOnClickListener { showRecordsTab(false) }
+        showRecordsTab(true)
+        val dialogContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(tabs)
+            addView(content, LinearLayout.LayoutParams(-1, -1))
+        }
         val scroll = ScrollView(this).apply {
-            addView(content)
+            addView(dialogContent)
             layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(520))
         }
         AlertDialog.Builder(this).setTitle("Records").setView(scroll)
