@@ -20,8 +20,8 @@ android {
         applicationId = "com.example.watertracker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 19
-        versionName = "1.4.3"
+        versionCode = 20
+        versionName = "1.4.4"
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
