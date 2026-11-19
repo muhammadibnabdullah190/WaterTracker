@@ -1414,8 +1414,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 java.util.zip.ZipFile(apkFile).use { zip ->
                     if (zip.getEntry("AndroidManifest.xml") == null) throw IllegalStateException("Downloaded file is not a valid Android APK.")
                 }
+                // Preserve a recoverable snapshot of all app preferences before updating.
+                saveAutomaticPreUpdateBackup()
                 getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
-                    .putString("pending_update_apk", apkFile.absolutePath).apply()
+                    .putString("pending_update_apk", apkFile.absolutePath).commit()
                 runOnUiThread {
                     progressDialog.dismiss()
                     val installProgress = android.app.ProgressDialog(this).apply {
@@ -1436,6 +1438,47 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }.start()
     }
 
+    private fun saveAutomaticPreUpdateBackup() {
+        try {
+            val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
+            val values = JSONObject()
+            for ((key, value) in prefs.all) {
+                if (key == "pending_update_apk") continue
+                val item = JSONObject()
+                when (value) {
+                    is String -> item.put("type", "string").put("value", value)
+                    is Boolean -> item.put("type", "boolean").put("value", value)
+                    is Int -> item.put("type", "int").put("value", value)
+                    is Long -> item.put("type", "long").put("value", value)
+                    is Float -> item.put("type", "float").put("value", value.toDouble())
+                    is Set<*> -> {
+                        val strings = JSONArray()
+                        value.filterIsInstance<String>().forEach { strings.put(it) }
+                        item.put("type", "string_set").put("value", strings)
+                    }
+                    else -> continue
+                }
+                values.put(key, item)
+            }
+            val backup = JSONObject()
+                .put("format", "watertracker-backup")
+                .put("schemaVersion", 1)
+                .put("createdAt", System.currentTimeMillis())
+                .put("preferences", values)
+            val backupDir = java.io.File(filesDir, "automatic_backups").apply { mkdirs() }
+            val backupFile = java.io.File(backupDir, "watertracker-preupdate.json")
+            val tempFile = java.io.File(backupDir, "watertracker-preupdate.tmp")
+            tempFile.writeText(backup.toString(2), Charsets.UTF_8)
+            if (!tempFile.renameTo(backupFile)) {
+                backupFile.writeText(tempFile.readText(Charsets.UTF_8), Charsets.UTF_8)
+                tempFile.delete()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DrinkableWaterReminder", "Pre-update backup failed", e)
+            throw IllegalStateException("The safety backup could not be created. Update cancelled to protect your records.", e)
+        }
+    }
+
     private fun installDownloadedUpdate(apkFile: java.io.File) {
         if (!apkFile.exists()) {
             getSharedPreferences("water_tracker", MODE_PRIVATE).edit().remove("pending_update_apk").apply()
@@ -1449,6 +1492,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             return
         }
         try {
+            // Clear the pending marker synchronously BEFORE opening Android's installer.
+            // If Android kills/recreates this activity during installation, onResume
+            // will not launch the installer a second time.
+            getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
+                .remove("pending_update_apk").commit()
             val apkUri = androidx.core.content.FileProvider.getUriForFile(
                 this, "$packageName.fileprovider", apkFile
             )
@@ -1457,7 +1505,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             startActivity(installIntent)
-            getSharedPreferences("water_tracker", MODE_PRIVATE).edit().remove("pending_update_apk").apply()
         } catch (e: Exception) {
             toast("Could not open Android installer: ${e.localizedMessage ?: "Please try again."}")
         }
@@ -2359,11 +2406,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onResume() {
         super.onResume()
-        val pendingUpdatePath = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("pending_update_apk", null)
-        if (!pendingUpdatePath.isNullOrBlank() &&
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls())) {
-            installDownloadedUpdate(java.io.File(pendingUpdatePath))
-        }
+        // Never relaunch the package installer automatically from onResume.
+        // Android may recreate this activity after an update; auto-launching here
+        // can immediately send the app back to the installer instead of opening it.
         applyKeepScreenAwake()
         applyScreenDim(getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false))
         applyThemePreference()
