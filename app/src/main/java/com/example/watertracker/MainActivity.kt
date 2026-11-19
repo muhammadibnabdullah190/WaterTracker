@@ -2313,8 +2313,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(5), dp(4), dp(5), dp(4))
             insetTop = 0
             insetBottom = 0
-            insetLeft = 0
-            insetRight = 0
             minWidth = 0
             minHeight = dp(62)
             layoutParams = LinearLayout.LayoutParams(0, dp(62), 1f).apply { marginEnd = dp(5) }
@@ -2328,8 +2326,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(5), dp(4), dp(5), dp(4))
             insetTop = 0
             insetBottom = 0
-            insetLeft = 0
-            insetRight = 0
             minWidth = 0
             minHeight = dp(62)
             layoutParams = LinearLayout.LayoutParams(0, dp(62), 1f).apply { marginStart = dp(5) }
