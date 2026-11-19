@@ -1430,6 +1430,39 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 java.util.zip.ZipFile(apkFile).use { zip ->
                     if (zip.getEntry("AndroidManifest.xml") == null) throw IllegalStateException("Downloaded file is not a valid Android APK.")
                 }
+                // Validate package, version and signing certificate before handing the APK to Android.
+                val archiveInfo = packageManager.getPackageArchiveInfo(
+                    apkFile.absolutePath, PackageManager.GET_SIGNING_CERTIFICATES
+                ) ?: throw IllegalStateException("Android could not read the downloaded APK.")
+                if (archiveInfo.packageName != packageName) {
+                    throw IllegalStateException("This update belongs to a different app. Your installed app was not changed.")
+                }
+                val installedInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+                }
+                val installedVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) installedInfo.longVersionCode else installedInfo.versionCode.toLong()
+                val archiveVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) archiveInfo.longVersionCode else archiveInfo.versionCode.toLong()
+                if (archiveVersion <= installedVersion) {
+                    throw IllegalStateException("The downloaded APK is not newer than the installed app. No changes were made.")
+                }
+                val installedSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    installedInfo.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet()
+                } else {
+                    @Suppress("DEPRECATION")
+                    installedInfo.signatures?.map { it.toCharsString() }?.toSet()
+                }
+                val archiveSigners = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    archiveInfo.signingInfo?.apkContentsSigners?.map { it.toCharsString() }?.toSet()
+                } else {
+                    @Suppress("DEPRECATION")
+                    archiveInfo.signatures?.map { it.toCharsString() }?.toSet()
+                }
+                if (installedSigners.isNullOrEmpty() || installedSigners != archiveSigners) {
+                    throw IllegalStateException("The update's signing certificate does not match this installation. Your app and records were not changed.")
+                }
                 // Preserve a recoverable snapshot of all app preferences before updating.
                 saveAutomaticPreUpdateBackup()
                 getSharedPreferences("water_tracker", MODE_PRIVATE).edit()
@@ -2143,40 +2176,48 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (yearly.isEmpty()) {
             addSummary("No recorded water intake yet.")
         } else {
-            val yearlyProgressGrid = android.widget.GridLayout(this).apply {
-                columnCount = 2
-                useDefaultMargins = false
-                alignmentMode = android.widget.GridLayout.ALIGN_BOUNDS
+            val yearlyProgressRows = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(-1, -2)
             }
-            yearly.forEach { (yr, amount) ->
-                val yearCalendar = Calendar.getInstance().apply { set(Calendar.YEAR, yr) }
-                val annualGoal = dailyGoalMl * yearCalendar.getActualMaximum(Calendar.DAY_OF_YEAR)
-                val yearCard = com.google.android.material.card.MaterialCardView(this).apply {
-                    radius = dp(18).toFloat()
-                    cardElevation = 0f
-                    strokeWidth = dp(1)
-                    setStrokeColor(android.graphics.Color.rgb(225, 237, 243))
-                    setCardBackgroundColor(android.graphics.Color.rgb(248, 252, 254))
-                    layoutParams = android.widget.GridLayout.LayoutParams().apply {
-                        width = 0
-                        height = dp(158)
-                        columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                        setMargins(dp(4), dp(4), dp(4), dp(4))
-                    }
+            yearly.chunked(2).forEach { yearRowItems ->
+                val yearRow = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(-1, -2)
                 }
-                val annualCircle = CircularHydrationProgressView(this).apply {
-                    consumedMl = amount
-                    goalMl = annualGoal
-                    progress = ((amount.toLong() * 100L) / annualGoal.coerceAtLeast(1)).toInt().coerceIn(0, 100)
-                    periodLabel = yr.toString()
-                    layoutParams = LinearLayout.LayoutParams(dp(142), dp(142)).apply {
-                        gravity = android.view.Gravity.CENTER
+                yearRowItems.forEach { (yr, amount) ->
+                    val yearCalendar = Calendar.getInstance().apply { set(Calendar.YEAR, yr) }
+                    val annualGoal = dailyGoalMl * yearCalendar.getActualMaximum(Calendar.DAY_OF_YEAR)
+                    val yearCard = com.google.android.material.card.MaterialCardView(this).apply {
+                        radius = dp(18).toFloat()
+                        cardElevation = 0f
+                        strokeWidth = dp(1)
+                        setStrokeColor(android.graphics.Color.rgb(225, 237, 243))
+                        setCardBackgroundColor(android.graphics.Color.rgb(248, 252, 254))
+                        layoutParams = LinearLayout.LayoutParams(
+                            if (yearRowItems.size == 1) dp(158) else 0,
+                            dp(158),
+                            if (yearRowItems.size == 1) 0f else 1f
+                        ).apply {
+                            setMargins(dp(4), dp(4), dp(4), dp(4))
+                        }
                     }
+                    val annualCircle = CircularHydrationProgressView(this).apply {
+                        consumedMl = amount
+                        goalMl = annualGoal
+                        progress = ((amount.toLong() * 100L) / annualGoal.coerceAtLeast(1)).toInt().coerceIn(0, 100)
+                        periodLabel = yr.toString()
+                        layoutParams = LinearLayout.LayoutParams(dp(142), dp(142)).apply {
+                            gravity = android.view.Gravity.CENTER
+                        }
+                    }
+                    yearCard.addView(annualCircle)
+                    yearRow.addView(yearCard)
                 }
-                yearCard.addView(annualCircle)
-                yearlyProgressGrid.addView(yearCard)
+                yearlyProgressRows.addView(yearRow)
             }
-            content.addView(yearlyProgressGrid)
+            content.addView(yearlyProgressRows)
         }
 
         addSection("DAILY RECORDS • CALENDAR")
