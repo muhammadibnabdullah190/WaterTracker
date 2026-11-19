@@ -2087,8 +2087,56 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addSection("YEARLY TOTALS FROM $birthYear")
         val yearly = (birthYear..currentYear).map { yr -> yr to periodTotal { it.startsWith(yr.toString()) } }
             .filter { it.second > 0 }.asReversed()
-        if (yearly.isEmpty()) addSummary("No recorded water intake yet.")
-        else yearly.forEach { (yr, amount) -> addSummary("$yr: $amount ml") }
+        if (yearly.isEmpty()) {
+            addSummary("No recorded water intake yet.")
+        } else {
+            yearly.forEach { (yr, amount) ->
+                val yearCalendar = Calendar.getInstance().apply { set(Calendar.YEAR, yr) }
+                val annualGoal = dailyGoalMl * yearCalendar.getActualMaximum(Calendar.DAY_OF_YEAR)
+                val percent = ((amount.toLong() * 100L) / annualGoal.coerceAtLeast(1)).toInt()
+                val yearCard = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(10), dp(9), dp(10), dp(9))
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(android.graphics.Color.rgb(248, 252, 254))
+                        cornerRadius = dp(12).toFloat()
+                        setStroke(dp(1), android.graphics.Color.rgb(225, 237, 243))
+                    }
+                    layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                        setMargins(dp(3), dp(4), dp(3), dp(4))
+                    }
+                }
+                yearCard.addView(TextView(this).apply {
+                    text = "$yr  •  ${amount} ml / ${annualGoal} ml"
+                    textSize = 13f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(android.graphics.Color.rgb(45, 75, 94))
+                })
+                val annualProgress = android.widget.ProgressBar(
+                    this, null, android.R.attr.progressBarStyleHorizontal
+                ).apply {
+                    max = 100
+                    progress = percent.coerceIn(0, 100)
+                    progressTintList = android.content.res.ColorStateList.valueOf(
+                        android.graphics.Color.rgb(0, 145, 190)
+                    )
+                    progressBackgroundTintList = android.content.res.ColorStateList.valueOf(
+                        android.graphics.Color.rgb(220, 235, 242)
+                    )
+                    layoutParams = LinearLayout.LayoutParams(-1, dp(10)).apply {
+                        topMargin = dp(8)
+                    }
+                }
+                yearCard.addView(annualProgress)
+                yearCard.addView(TextView(this).apply {
+                    text = "$percent% of annual goal"
+                    textSize = 11f
+                    setTextColor(android.graphics.Color.rgb(83, 112, 130))
+                    setPadding(0, dp(5), 0, 0)
+                })
+                content.addView(yearCard)
+            }
+        }
 
         addSection("DAILY RECORDS • CALENDAR")
         val calendarPanel = LinearLayout(this).apply {
