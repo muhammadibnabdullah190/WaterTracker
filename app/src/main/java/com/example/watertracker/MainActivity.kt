@@ -314,9 +314,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun applyTransparentGlassText(view: android.view.View) {
         if (view is TextView) {
-            // Use translucent white text and remove dark text shadows/outline effects.
+            // Translucent white lettering with a soft translucent-white halo instead of a dark outline.
             view.setTextColor(android.graphics.Color.argb(224, 255, 255, 255))
-            view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+            view.setShadowLayer(
+                dp(1.25).toFloat(),
+                0f,
+                0f,
+                android.graphics.Color.argb(115, 255, 255, 255)
+            )
         }
 
         // Make buttons and other clickable controls visibly glass-like instead of opaque.
