@@ -249,13 +249,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         addDashboardButton(dashboardGrid, "Theme", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showThemeOptions() }
         addDashboardButton(dashboardGrid, "Water Entries", ContextCompat.getDrawable(this, R.drawable.ic_quick_add)!!) { showQuickAddOptions() }
-        addDashboardButton(dashboardGrid, "Voice logging", ContextCompat.getDrawable(this, R.drawable.ic_voice)!!) { requestVoice() }
+        addDashboardButton(dashboardGrid, "Voice Logging", ContextCompat.getDrawable(this, R.drawable.ic_voice)!!) { requestVoice() }
         addDashboardButton(
             dashboardGrid,
-            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location tagging ON" else "Location tagging",
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("location_tagging", false)) "Location Tagging ON" else "Location Tagging",
             ContextCompat.getDrawable(this, R.drawable.ic_location)!!
         ) { toggleLocationTagging() }
-        addDashboardButton(dashboardGrid, "Scan Barcode / QR Code", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
+        addDashboardButton(dashboardGrid, "Scan Barcode / QR code", ContextCompat.getDrawable(this, R.drawable.ic_camera_tools)!!) { showCameraToolsDialog() }
         addDashboardButton(dashboardGrid, "Display", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showDisplayDialog() }
         addDashboardButton(dashboardGrid, "Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
@@ -630,9 +630,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         action: () -> Unit
     ) {
         val button = createActionButton(label, action).apply {
+            val fullWidthLabel = label == "Scan Barcode / QR code"
             layoutParams = android.widget.GridLayout.LayoutParams(
                 android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
-                android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                if (fullWidthLabel) {
+                    android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 2)
+                } else {
+                    android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                }
             ).apply {
                 width = 0
                 height = dp(58)
