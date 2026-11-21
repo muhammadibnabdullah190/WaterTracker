@@ -634,7 +634,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             layoutParams = android.widget.GridLayout.LayoutParams(
                 android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f),
                 if (fullWidthLabel) {
-                    android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 2)
+                    android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 2, 1f)
                 } else {
                     android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
                 }
