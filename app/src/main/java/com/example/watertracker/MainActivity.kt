@@ -492,7 +492,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         private val periodOutlinePaint = android.graphics.Paint(periodPaint).apply {
             style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(0.8f).toFloat()
+            strokeWidth = dp(1).toFloat()
             color = android.graphics.Color.argb(135, 255, 255, 255)
         }
 
