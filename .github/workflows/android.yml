@@ -56,11 +56,11 @@ jobs:
           tag_name: watertracker-build-${{ github.run_number }}
           name: Water Tracker verified build ${{ github.run_number }}
           body: |
-            App-Version-Code: 26
+            App-Version-Code: 27
 
             - Fix update check fallback so manually installed APK versions are verified before offering updates.
             - Add Transparent Glass Effect theme option.
-            - Fix glass theme Kotlin compilation: clear text shadows with setShadowLayer and set card stroke using the integer API.
+            - Change glass-theme text outline/halo to soft translucent white instead of black.
             - Show yearly hydration totals as circular progress indicators.
             - Improve Records tab size and label wrapping.
             - Center a single yearly progress indicator in Daily Hydration.
