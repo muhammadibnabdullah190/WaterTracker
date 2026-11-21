@@ -314,13 +314,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun applyTransparentGlassText(view: android.view.View) {
         if (view is TextView) {
-            // Translucent white lettering with a soft translucent-white halo instead of a dark outline.
-            view.setTextColor(android.graphics.Color.argb(224, 255, 255, 255))
+            // Glass text: translucent white fill with a soft white-only edge glow.
+            // Clear any previous shadow first so no dark halo survives a theme change.
+            view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+            view.setTextColor(android.graphics.Color.argb(178, 255, 255, 255))
+            view.setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
             view.setShadowLayer(
-                dp(1).toFloat(),
+                dp(2).toFloat(),
                 0f,
                 0f,
-                android.graphics.Color.argb(115, 255, 255, 255)
+                android.graphics.Color.argb(185, 255, 255, 255)
             )
         }
 
@@ -475,6 +478,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             textAlign = android.graphics.Paint.Align.CENTER
             textSize = dp(10).toFloat()
         }
+        private val percentOutlinePaint = android.graphics.Paint(percentPaint).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(1).toFloat()
+            color = android.graphics.Color.argb(155, 255, 255, 255)
+        }
+        private val amountOutlinePaint = android.graphics.Paint(amountPaint).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(0.8f).toFloat()
+            color = android.graphics.Color.argb(145, 255, 255, 255)
+        }
+        private val periodOutlinePaint = android.graphics.Paint(periodPaint).apply {
+            style = android.graphics.Paint.Style.STROKE
+            strokeWidth = dp(0.8f).toFloat()
+            color = android.graphics.Color.argb(135, 255, 255, 255)
+        }
 
         override fun onAttachedToWindow() {
             super.onAttachedToWindow()
@@ -538,13 +556,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             canvas.drawPath(secondWave, wavePaint)
             canvas.restoreToCount(save)
 
-            val textColor = if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(20, 75, 102)
+            // In Glass theme, every progress label uses a translucent white fill and
+            // a separate translucent-white stroke; never use the dark fallback text.
+            val glass = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
+            val textColor = if (glass) android.graphics.Color.argb(178, 255, 255, 255)
+                else if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(20, 75, 102)
             percentPaint.color = textColor
             amountPaint.color = textColor
-            periodPaint.color = if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(83, 112, 130)
-            canvas.drawText("$percent%", centerX, centerY - dp(5).toFloat(), percentPaint)
-            canvas.drawText("$consumedMl / $goalMl ml", centerX, centerY + dp(11).toFloat(), amountPaint)
-            canvas.drawText(periodLabel, centerX, centerY + dp(25).toFloat(), periodPaint)
+            periodPaint.color = if (glass) textColor else if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(83, 112, 130)
+            val percentY = centerY - dp(5).toFloat()
+            val amountY = centerY + dp(11).toFloat()
+            val periodY = centerY + dp(25).toFloat()
+            if (glass) {
+                percentOutlinePaint.color = android.graphics.Color.argb(155, 255, 255, 255)
+                amountOutlinePaint.color = android.graphics.Color.argb(145, 255, 255, 255)
+                periodOutlinePaint.color = android.graphics.Color.argb(135, 255, 255, 255)
+                canvas.drawText("$percent%", centerX, percentY, percentOutlinePaint)
+                canvas.drawText("$consumedMl / $goalMl ml", centerX, amountY, amountOutlinePaint)
+                canvas.drawText(periodLabel, centerX, periodY, periodOutlinePaint)
+            }
+            canvas.drawText("$percent%", centerX, percentY, percentPaint)
+            canvas.drawText("$consumedMl / $goalMl ml", centerX, amountY, amountPaint)
+            canvas.drawText(periodLabel, centerX, periodY, periodPaint)
         }
     }
 
