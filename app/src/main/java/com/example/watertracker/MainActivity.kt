@@ -305,11 +305,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         root.addView(screenDimOverlay, FrameLayout.LayoutParams(-1, -1))
         root.addView(blueFilterOverlay, FrameLayout.LayoutParams(-1, -1))
+        if (transparentTheme) applyTransparentGlassText(root)
         setContentView(root)
         screenDimOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
         blueFilterOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
     }
 
+
+    private fun applyTransparentGlassText(view: android.view.View) {
+        if (view is TextView) {
+            // Semi-transparent white typography for the Transparent Glass Effect theme.
+            view.setTextColor(android.graphics.Color.argb(224, 255, 255, 255))
+        }
+        if (view is android.view.ViewGroup) {
+            for (index in 0 until view.childCount) {
+                applyTransparentGlassText(view.getChildAt(index))
+            }
+        }
+    }
 
     private lateinit var waterProgress: CircularHydrationProgressView
 
