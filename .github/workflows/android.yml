@@ -56,9 +56,9 @@ jobs:
           tag_name: watertracker-build-${{ github.run_number }}
           name: Water Tracker verified build ${{ github.run_number }}
           body: |
-            App-Version-Code: 21
+            App-Version-Code: 22
 
-            - Fix update check so installed version is compared with the latest release.
+            - Fix update check fallback so manually installed APK versions are verified before offering updates.
             - Show yearly hydration totals as circular progress indicators.
             - Improve Records tab size and label wrapping.
             - Center a single yearly progress indicator in Daily Hydration.
