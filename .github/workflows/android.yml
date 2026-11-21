@@ -71,3 +71,9 @@ jobs:
           make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Explicitly mark this build as the latest release
+        if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "watertracker-build-${GITHUB_RUN_NUMBER}" --latest
