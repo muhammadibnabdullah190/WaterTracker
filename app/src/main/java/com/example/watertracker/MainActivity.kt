@@ -1258,6 +1258,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 var latestVersionCode: Long? = null
                 var downloadUrl: String? = null
                 var apiFailure: Exception? = null
+
+                // Primary path: read the latest published release and its explicit app version.
                 try {
                     val api = java.net.URL("https://api.github.com/repos/$repository/releases/latest")
                         .openConnection() as java.net.HttpURLConnection
@@ -1278,7 +1280,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     for (i in 0 until assets.length()) {
                         val asset = assets.optJSONObject(i) ?: continue
                         if (asset.optString("name") == "app-debug.apk") {
-                            downloadUrl = asset.optString("browser_download_url").takeIf { it.startsWith("https://") }
+                            val candidate = asset.optString("browser_download_url")
+                            if (candidate.startsWith("https://")) downloadUrl = candidate
                             break
                         }
                     }
@@ -1286,8 +1289,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 } catch (e: Exception) {
                     apiFailure = e
                 }
-                if (downloadUrl == null) {
-                    // Fallback: resolve the latest release using github.com, without the API host.
+
+                // Fallback: resolve the latest release page and read its version code.
+                // Never offer an update when the installed-vs-release comparison cannot be verified.
+                if (downloadUrl == null || latestVersionCode == null) {
                     val latest = java.net.URL("https://github.com/$repository/releases/latest")
                         .openConnection() as java.net.HttpURLConnection
                     latest.instanceFollowRedirects = false
@@ -1297,32 +1302,67 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     val code = latest.responseCode
                     val location = latest.getHeaderField("Location")
                     latest.disconnect()
-                    val tag = location?.substringAfterLast("/")?.takeIf { location.contains("/releases/tag/") && it.isNotBlank() }
-                        ?: throw IllegalStateException("GitHub could not be reached. Check your mobile data and try again. ${apiFailure?.localizedMessage ?: ""}")
+                    if (code !in 300..399) {
+                        throw IllegalStateException("GitHub could not verify the latest release. ${apiFailure?.localizedMessage ?: "Please try again later."}")
+                    }
+                    val tag = location?.substringAfterLast("/")?.takeIf {
+                        location.contains("/releases/tag/") && it.isNotBlank()
+                    } ?: throw IllegalStateException("GitHub did not provide a latest release tag.")
+
+                    val releasePage = java.net.URL("https://github.com/$repository/releases/tag/$tag")
+                        .openConnection() as java.net.HttpURLConnection
+                    releasePage.connectTimeout = 15000
+                    releasePage.readTimeout = 15000
+                    releasePage.setRequestProperty("User-Agent", "DrinkableWaterReminder-Android")
+                    if (releasePage.responseCode != 200) {
+                        releasePage.disconnect()
+                        throw IllegalStateException("Could not read release version information.")
+                    }
+                    val html = releasePage.inputStream.bufferedReader().use { it.readText() }
+                    releasePage.disconnect()
+                    val visibleText = html.replace(Regex("<[^>]+>"), " ")
+                        .replace("&nbsp;", " ")
+                        .replace("&amp;", "&")
+                        .replace("&#39;", "'")
+                        .replace("&quot;", "\"")
+                    latestVersionCode = Regex("(?i)App-Version-Code:\\s*(\\d+)")
+                        .find(visibleText)?.groupValues?.getOrNull(1)?.toLongOrNull()
+                        ?: throw IllegalStateException("The latest release does not expose App-Version-Code. Update availability cannot be verified, so no installation is offered.")
                     releaseName = tag
-                    notes = "Latest release: $tag. Open the release notes on GitHub to review its changes."
+                    notes = "Latest release: $tag (version code $latestVersionCode). Review the release notes on GitHub before approving."
                     downloadUrl = "https://github.com/$repository/releases/latest/download/app-debug.apk"
                 }
-                val finalUrl = downloadUrl ?: throw IllegalStateException("No APK download link was found.")
+
+                val verifiedVersionCode = latestVersionCode
+                    ?: throw IllegalStateException("Latest release version could not be verified. No update was offered.")
+                val finalUrl = downloadUrl
+                    ?: throw IllegalStateException("No APK download link was found.")
                 val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     packageManager.getPackageInfo(packageName, 0).longVersionCode
                 } else {
                     @Suppress("DEPRECATION")
                     packageManager.getPackageInfo(packageName, 0).versionCode.toLong()
                 }
-                if (latestVersionCode != null && latestVersionCode!! <= installedVersionCode) {
-                    runOnUiThread { toast("You're using the latest version ($releaseName). No update is available.") }
+
+                if (verifiedVersionCode <= installedVersionCode) {
+                    runOnUiThread {
+                        toast("You're using the latest version ($releaseName). No update is available.")
+                    }
                     return@Thread
                 }
+
                 runOnUiThread {
                     val displayNotes = notes.replace(Regex("(?im)^App-Version-Code:\\s*\\d+\\s*$"), "").trim()
                     showUpdateConsentDialog(releaseName, displayNotes, finalUrl)
                 }
             } catch (e: Exception) {
-                runOnUiThread { toast("Update check failed: ${e.localizedMessage ?: "Please check your mobile data and try again."}") }
+                runOnUiThread {
+                    toast("Update check failed: ${e.localizedMessage ?: "Please check your mobile data and try again."}")
+                }
             }
         }.start()
     }
+
     private fun showUpdateConsentDialog(releaseName: String, notes: String, downloadUrl: String) {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
