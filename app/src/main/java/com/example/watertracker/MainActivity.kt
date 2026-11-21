@@ -317,7 +317,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             // Translucent white lettering with a soft translucent-white halo instead of a dark outline.
             view.setTextColor(android.graphics.Color.argb(224, 255, 255, 255))
             view.setShadowLayer(
-                dp(1.25).toFloat(),
+                dp(1).toFloat(),
                 0f,
                 0f,
                 android.graphics.Color.argb(115, 255, 255, 255)
