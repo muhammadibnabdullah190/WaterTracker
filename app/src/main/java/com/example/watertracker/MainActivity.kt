@@ -322,7 +322,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
             view.setTextColor(android.graphics.Color.argb(112, 255, 255, 255))
             view.setShadowLayer(
-                dp(1.5f).toFloat(),
+                dp(2).toFloat(),
                 0f,
                 0f,
                 android.graphics.Color.argb(235, 255, 255, 255)
@@ -487,7 +487,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         private val amountOutlinePaint = android.graphics.Paint(amountPaint).apply {
             style = android.graphics.Paint.Style.STROKE
-            strokeWidth = dp(0.8f).toFloat()
+            strokeWidth = dp(1).toFloat()
             color = android.graphics.Color.argb(145, 255, 255, 255)
         }
         private val periodOutlinePaint = android.graphics.Paint(periodPaint).apply {
