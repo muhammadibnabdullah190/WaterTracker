@@ -305,8 +305,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
         root.addView(screenDimOverlay, FrameLayout.LayoutParams(-1, -1))
         root.addView(blueFilterOverlay, FrameLayout.LayoutParams(-1, -1))
-        if (transparentTheme) applyTransparentGlassText(root)
         setContentView(root)
+        // Apply glass text styling after attachment so Android/Material theme
+        // resolution cannot restore the default dark text shadow/outline.
+        if (transparentTheme) {
+            applyTransparentGlassText(root)
+            root.invalidate()
+        }
         screenDimOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("screen_dim_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
         blueFilterOverlay.visibility = if (getSharedPreferences("water_tracker", MODE_PRIVATE).getBoolean("blue_filter_enabled", false)) android.view.View.VISIBLE else android.view.View.GONE
     }
@@ -319,14 +324,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             view.setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
             view.paint.style = android.graphics.Paint.Style.FILL
             view.paint.strokeWidth = 0f
-            view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+            view.paint.clearShadowLayer()
             view.setTextColor(android.graphics.Color.argb(112, 255, 255, 255))
+            // A small white-only halo; no dark shadow or black stroke.
             view.setShadowLayer(
-                dp(2).toFloat(),
+                dp(1).toFloat(),
                 0f,
                 0f,
-                android.graphics.Color.argb(235, 255, 255, 255)
+                android.graphics.Color.argb(190, 255, 255, 255)
             )
+            view.invalidate()
         }
 
         // Make buttons and other clickable controls visibly glass-like instead of opaque.
