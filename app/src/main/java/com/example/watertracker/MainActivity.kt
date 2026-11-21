@@ -314,9 +314,33 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun applyTransparentGlassText(view: android.view.View) {
         if (view is TextView) {
-            // Semi-transparent white typography for the Transparent Glass Effect theme.
+            // Use translucent white text and remove dark text shadows/outline effects.
             view.setTextColor(android.graphics.Color.argb(224, 255, 255, 255))
+            view.clearShadowLayer()
         }
+
+        // Make buttons and other clickable controls visibly glass-like instead of opaque.
+        if (view.isClickable || view is Button) {
+            view.background?.mutate()?.alpha = 82
+            if (view is com.google.android.material.button.MaterialButton) {
+                view.backgroundTintList = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.argb(55, 255, 255, 255)
+                )
+                view.strokeColor = android.content.res.ColorStateList.valueOf(
+                    android.graphics.Color.argb(105, 255, 255, 255)
+                )
+            }
+        }
+
+        // Soften card surfaces while keeping their content legible.
+        if (view is com.google.android.material.card.MaterialCardView) {
+            view.setCardBackgroundColor(android.graphics.Color.argb(48, 255, 255, 255))
+            view.strokeColor = android.content.res.ColorStateList.valueOf(
+                android.graphics.Color.argb(85, 255, 255, 255)
+            )
+            view.cardElevation = 0f
+        }
+
         if (view is android.view.ViewGroup) {
             for (index in 0 until view.childCount) {
                 applyTransparentGlassText(view.getChildAt(index))
