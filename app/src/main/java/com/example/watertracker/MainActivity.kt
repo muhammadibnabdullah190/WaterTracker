@@ -154,9 +154,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(dp(20), dp(18), dp(18), dp(18))
             background = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-                if (transparentTheme) intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
-                else intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
-            ).apply { cornerRadius = dp(26).toFloat() }
+                if (transparentTheme) intArrayOf(
+                    android.graphics.Color.argb(178, 224, 248, 255),
+                    android.graphics.Color.argb(145, 174, 224, 239)
+                ) else intArrayOf(android.graphics.Color.rgb(5, 105, 175), android.graphics.Color.rgb(0, 150, 160))
+            ).apply {
+                cornerRadius = dp(26).toFloat()
+                if (transparentTheme) setStroke(dp(1), android.graphics.Color.argb(190, 255, 255, 255))
+            }
         }
         val logo = android.widget.ImageView(this).apply {
             setImageResource(R.drawable.ic_water_tracker)
@@ -168,13 +173,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         heroText.addView(TextView(this).apply {
             text = "Drinkable Water Reminder"
             textSize = 27f
-            setTextColor(android.graphics.Color.WHITE)
+            setTextColor(if (transparentTheme) android.graphics.Color.rgb(20, 69, 91) else android.graphics.Color.WHITE)
             setTypeface(typeface, Typeface.BOLD)
         })
         heroText.addView(TextView(this).apply {
             text = "Small sips. Better habits."
             textSize = 14f
-            setTextColor(android.graphics.Color.rgb(224, 245, 255))
+            setTextColor(if (transparentTheme) android.graphics.Color.rgb(45, 91, 108) else android.graphics.Color.rgb(224, 245, 255))
             setPadding(0, dp(5), 0, 0)
         })
         heroContent.addView(heroText)
@@ -684,13 +689,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun applyThemePreference() {
         val prefs = getSharedPreferences("water_tracker", MODE_PRIVATE)
         val stored = prefs.getString("theme", "system") ?: "system"
+        // Glass is a visual treatment layered over the light palette; preserve its selection.
         val mode = when (stored) {
-            "light", "choice_light" -> "light"
+            "light", "choice_light", "transparent" -> "light"
             "dark", "choice_dark" -> "dark"
             "system" -> "system"
             else -> "system"
         }
-        if (stored != mode) prefs.edit().putString("theme", mode).apply()
+        if (stored !in setOf("light", "choice_light", "dark", "choice_dark", "system", "transparent")) {
+            prefs.edit().putString("theme", "system").apply()
+        }
         val nightMode = when (mode) {
             "light" -> AppCompatDelegate.MODE_NIGHT_NO
             "dark" -> AppCompatDelegate.MODE_NIGHT_YES
@@ -708,14 +716,24 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     private fun showThemeOptions() {
-        val options = arrayOf("Light", "Dark", "System Theme")
+        val options = arrayOf("Light", "Dark", "System Theme", "Transparent Glass Effect")
         val current = getSharedPreferences("water_tracker", MODE_PRIVATE)
             .getString("theme", "system") ?: "system"
-        val checked = when (current) { "light" -> 0; "dark" -> 1; else -> 2 }
+        val checked = when (current) {
+            "light" -> 0
+            "dark" -> 1
+            "transparent" -> 3
+            else -> 2
+        }
         AlertDialog.Builder(this)
             .setTitle("Choose Theme")
             .setSingleChoiceItems(options, checked) { dialog, which ->
-                val mode = when (which) { 0 -> "light"; 1 -> "dark"; else -> "system" }
+                val mode = when (which) {
+                    0 -> "light"
+                    1 -> "dark"
+                    2 -> "system"
+                    else -> "transparent"
+                }
                 dialog.dismiss()
                 saveThemeMode(mode)
             }
