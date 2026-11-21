@@ -314,16 +314,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private fun applyTransparentGlassText(view: android.view.View) {
         if (view is TextView) {
-            // Glass text: translucent white fill with a soft white-only edge glow.
-            // Clear any previous shadow first so no dark halo survives a theme change.
-            view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
-            view.setTextColor(android.graphics.Color.argb(178, 255, 255, 255))
+            // Glass text: transparent white fill with a white-only outline/glow.
+            // Explicitly discard any inherited dark stroke or shadow from the active text style.
             view.setLayerType(android.view.View.LAYER_TYPE_SOFTWARE, null)
+            view.paint.style = android.graphics.Paint.Style.FILL
+            view.paint.strokeWidth = 0f
+            view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
+            view.setTextColor(android.graphics.Color.argb(112, 255, 255, 255))
             view.setShadowLayer(
-                dp(2).toFloat(),
+                dp(1.5f).toFloat(),
                 0f,
                 0f,
-                android.graphics.Color.argb(185, 255, 255, 255)
+                android.graphics.Color.argb(235, 255, 255, 255)
             )
         }
 
@@ -559,7 +561,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             // In Glass theme, every progress label uses a translucent white fill and
             // a separate translucent-white stroke; never use the dark fallback text.
             val glass = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
-            val textColor = if (glass) android.graphics.Color.argb(178, 255, 255, 255)
+            val textColor = if (glass) android.graphics.Color.argb(105, 255, 255, 255)
                 else if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(20, 75, 102)
             percentPaint.color = textColor
             amountPaint.color = textColor
@@ -568,9 +570,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val amountY = centerY + dp(11).toFloat()
             val periodY = centerY + dp(25).toFloat()
             if (glass) {
-                percentOutlinePaint.color = android.graphics.Color.argb(155, 255, 255, 255)
-                amountOutlinePaint.color = android.graphics.Color.argb(145, 255, 255, 255)
-                periodOutlinePaint.color = android.graphics.Color.argb(135, 255, 255, 255)
+                percentOutlinePaint.color = android.graphics.Color.argb(225, 255, 255, 255)
+                amountOutlinePaint.color = android.graphics.Color.argb(215, 255, 255, 255)
+                periodOutlinePaint.color = android.graphics.Color.argb(205, 255, 255, 255)
                 canvas.drawText("$percent%", centerX, percentY, percentOutlinePaint)
                 canvas.drawText("$consumedMl / $goalMl ml", centerX, amountY, amountOutlinePaint)
                 canvas.drawText(periodLabel, centerX, periodY, periodOutlinePaint)
