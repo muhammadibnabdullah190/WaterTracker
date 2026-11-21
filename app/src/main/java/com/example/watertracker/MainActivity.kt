@@ -316,7 +316,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         if (view is TextView) {
             // Use translucent white text and remove dark text shadows/outline effects.
             view.setTextColor(android.graphics.Color.argb(224, 255, 255, 255))
-            view.clearShadowLayer()
+            view.setShadowLayer(0f, 0f, 0f, android.graphics.Color.TRANSPARENT)
         }
 
         // Make buttons and other clickable controls visibly glass-like instead of opaque.
@@ -335,9 +335,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         // Soften card surfaces while keeping their content legible.
         if (view is com.google.android.material.card.MaterialCardView) {
             view.setCardBackgroundColor(android.graphics.Color.argb(48, 255, 255, 255))
-            view.strokeColor = android.content.res.ColorStateList.valueOf(
-                android.graphics.Color.argb(85, 255, 255, 255)
-            )
+            view.setStrokeColor(android.graphics.Color.argb(85, 255, 255, 255))
             view.cardElevation = 0f
         }
 
