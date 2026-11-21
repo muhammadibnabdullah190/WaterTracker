@@ -260,8 +260,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addDashboardButton(dashboardGrid, "Records", ContextCompat.getDrawable(this, R.drawable.ic_entries)!!) { showDailyHistory() }
         addDashboardButton(dashboardGrid, "Check for Update", ContextCompat.getDrawable(this, R.drawable.ic_update)!!) { checkForAppUpdate() }
         addDashboardButton(dashboardGrid, "Backup & Restore", ContextCompat.getDrawable(this, R.drawable.ic_backup_restore)!!) { showBackupRestoreDialog() }
-        addDashboardButton(dashboardGrid, "Accessibility Settings", ContextCompat.getDrawable(this, R.drawable.ic_display)!!) { showAccessibilityDialog() }
         page.addView(dashboardGrid)
+
+        val accessibilityRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(-1, -2).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(10)
+            }
+        }
+        val accessibilityButton = createActionButton("Accessibility Settings") { showAccessibilityDialog() }.apply {
+            icon = ContextCompat.getDrawable(this@MainActivity, R.drawable.ic_display)
+            iconSize = dp(23)
+            iconPadding = dp(5)
+            iconGravity = com.google.android.material.button.MaterialButton.ICON_GRAVITY_TEXT_START
+            maxWidth = dp(240)
+            layoutParams = LinearLayout.LayoutParams(dp(240), dp(58))
+        }
+        accessibilityRow.addView(accessibilityButton)
+        page.addView(accessibilityRow)
 
         historyText = TextView(this).apply {
             textSize = 13f
