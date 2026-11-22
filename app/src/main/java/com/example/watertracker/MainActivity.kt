@@ -583,15 +583,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             canvas.drawPath(secondWave, wavePaint)
             canvas.restoreToCount(save)
 
-            // Keep progress labels readable on the pale glass cards. White text with
-            // low opacity disappears against the transparent/light background, so use
-            // a strong translucent deep-teal fill and a subtle white edge in Glass theme.
+            // Glass theme uses translucent white labels with a dark soft shadow so
+            // they remain legible over both the pale card and animated water fill.
             val glass = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
-            val textColor = if (glass) android.graphics.Color.argb(238, 20, 75, 102)
+            val textColor = if (glass) android.graphics.Color.argb(225, 255, 255, 255)
                 else if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(20, 75, 102)
             percentPaint.color = textColor
             amountPaint.color = textColor
             periodPaint.color = if (glass) textColor else if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(83, 112, 130)
+            if (glass) {
+                listOf(percentPaint, amountPaint, periodPaint).forEach {
+                    it.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), android.graphics.Color.argb(205, 0, 55, 78))
+                }
+            } else {
+                listOf(percentPaint, amountPaint, periodPaint).forEach { it.clearShadowLayer() }
+            }
             val percentY = centerY - dp(5).toFloat()
             val amountY = centerY + dp(11).toFloat()
             val periodY = centerY + dp(25).toFloat()
@@ -2613,9 +2619,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             addView(dialogContent)
             layoutParams = android.view.ViewGroup.LayoutParams(-1, dp(520))
         }
-        AlertDialog.Builder(this).setTitle("Records").setView(scroll)
-            .setPositiveButton("Close", null).show()
-        applyViewOpacity(content, prefs.getInt("transparency_level", 75).coerceIn(0, 100))
+        val recordsDialog = AlertDialog.Builder(this).setTitle("Records").setView(scroll)
+            .setPositiveButton("Close", null).create()
+        recordsDialog.setOnShowListener {
+            if (prefs.getString("theme", "system") == "transparent") {
+                val glassWhite = android.graphics.Color.argb(225, 255, 255, 255)
+                fun styleRecordsText(view: android.view.View) {
+                    if (view is TextView) {
+                        view.setTextColor(glassWhite)
+                        view.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), android.graphics.Color.argb(205, 0, 55, 78))
+                    }
+                    if (view is android.view.ViewGroup) {
+                        for (index in 0 until view.childCount) styleRecordsText(view.getChildAt(index))
+                    }
+                }
+                styleRecordsText(content)
+                recordsDialog.findViewById<TextView>(androidx.appcompat.R.id.alertTitle)?.let {
+                    it.setTextColor(glassWhite)
+                    it.setShadowLayer(dp(2).toFloat(), 0f, dp(1).toFloat(), android.graphics.Color.argb(205, 0, 55, 78))
+                }
+                recordsDialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(glassWhite)
+                hydrationTab.setTextColor(glassWhite)
+                calendarTab.setTextColor(glassWhite)
+                previousMonth.setTextColor(glassWhite)
+                nextMonth.setTextColor(glassWhite)
+            } else {
+                applyViewOpacity(content, prefs.getInt("transparency_level", 75).coerceIn(0, 100))
+            }
+        }
+        recordsDialog.show()
     }
 
         private fun requestVoice() {
