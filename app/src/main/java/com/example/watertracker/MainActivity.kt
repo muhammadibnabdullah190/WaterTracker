@@ -362,7 +362,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     android.graphics.Color.argb(55, 255, 255, 255)
                 )
                 view.strokeColor = android.content.res.ColorStateList.valueOf(
-                    android.graphics.Color.argb(225, 255, 255, 255)
+                    android.graphics.Color.argb(165, 255, 255, 255)
                 )
             }
         }
@@ -583,10 +583,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             canvas.drawPath(secondWave, wavePaint)
             canvas.restoreToCount(save)
 
-            // In Glass theme, every progress label uses a translucent white fill and
-            // a separate translucent-white stroke; never use the dark fallback text.
+            // Keep progress labels readable on the pale glass cards. White text with
+            // low opacity disappears against the transparent/light background, so use
+            // a strong translucent deep-teal fill and a subtle white edge in Glass theme.
             val glass = getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent"
-            val textColor = if (glass) android.graphics.Color.argb(105, 255, 255, 255)
+            val textColor = if (glass) android.graphics.Color.argb(238, 20, 75, 102)
                 else if (fraction > 0.55f) android.graphics.Color.WHITE else android.graphics.Color.rgb(20, 75, 102)
             percentPaint.color = textColor
             amountPaint.color = textColor
@@ -596,8 +597,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             val periodY = centerY + dp(25).toFloat()
             if (glass) {
                 percentOutlinePaint.color = android.graphics.Color.argb(225, 255, 255, 255)
-                amountOutlinePaint.color = android.graphics.Color.argb(215, 255, 255, 255)
-                periodOutlinePaint.color = android.graphics.Color.argb(205, 255, 255, 255)
+                amountOutlinePaint.color = android.graphics.Color.argb(155, 255, 255, 255)
+                periodOutlinePaint.color = android.graphics.Color.argb(145, 255, 255, 255)
                 canvas.drawText("$percent%", centerX, percentY, percentOutlinePaint)
                 canvas.drawText("$consumedMl / $goalMl ml", centerX, amountY, amountOutlinePaint)
                 canvas.drawText(periodLabel, centerX, periodY, periodOutlinePaint)
