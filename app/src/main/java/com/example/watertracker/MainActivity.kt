@@ -362,7 +362,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                     android.graphics.Color.argb(55, 255, 255, 255)
                 )
                 view.strokeColor = android.content.res.ColorStateList.valueOf(
-                    android.graphics.Color.argb(105, 255, 255, 255)
+                    android.graphics.Color.argb(225, 255, 255, 255)
                 )
             }
         }
@@ -2316,7 +2316,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
                 cardElevation = 0f
                 strokeWidth = dp(1)
                 setStrokeColor(android.graphics.Color.rgb(225, 237, 243))
-                setCardBackgroundColor(android.graphics.Color.rgb(248, 252, 254))
+                setCardBackgroundColor(if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent") android.graphics.Color.argb(42, 255, 255, 255) else android.graphics.Color.rgb(248, 252, 254))
                 val params = android.widget.GridLayout.LayoutParams().apply {
                     width = 0
                     height = dp(148)
@@ -2676,9 +2676,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         addButton(content, "Records (last 30 days)", secondary = true) { showDailyHistory() }
         content.addView(historyText)
         val scroll = ScrollView(this).apply { addView(content) }
-        AlertDialog.Builder(this).setTitle("Water Entries").setView(scroll)
-            .setPositiveButton("Close", null).show()
-        applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+        val entriesDialog = AlertDialog.Builder(this).setTitle("Water Entries").setView(scroll)
+            .setPositiveButton("Close", null).create()
+        entriesDialog.setOnShowListener {
+            if (getSharedPreferences("water_tracker", MODE_PRIVATE).getString("theme", "system") == "transparent") {
+                entriesDialog.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT))
+                fun styleGlass(view: android.view.View) {
+                    view.background?.mutate()?.alpha = 48
+                    if (view is TextView) {
+                        view.setTextColor(android.graphics.Color.argb(235, 255, 255, 255))
+                        view.setShadowLayer(dp(2).toFloat(), 0f, 0f, android.graphics.Color.argb(150, 0, 45, 70))
+                    }
+                    if (view is android.view.ViewGroup) for (i in 0 until view.childCount) styleGlass(view.getChildAt(i))
+                }
+                styleGlass(content)
+                entriesDialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setTextColor(android.graphics.Color.WHITE)
+            } else {
+                applyViewOpacity(content, getSharedPreferences("water_tracker", MODE_PRIVATE).getInt("transparency_level", 75).coerceIn(0, 100))
+            }
+        }
+        entriesDialog.show()
     }
 
     private fun startVoiceInput() {
