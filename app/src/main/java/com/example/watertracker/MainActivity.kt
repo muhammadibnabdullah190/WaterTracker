@@ -1512,6 +1512,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setTextColor(android.graphics.Color.rgb(55, 83, 101))
             setPadding(0, dp(12), 0, dp(14))
         })
+        content.addView(TextView(this).apply {
+            text = "Download update:\\n$downloadUrl"
+            textSize = 13f
+            setTextColor(android.graphics.Color.rgb(0, 105, 160))
+            setPadding(0, 0, 0, dp(14))
+            autoLinkMask = android.text.util.Linkify.WEB_URLS
+            linksClickable = true
+            movementMethod = android.text.method.LinkMovementMethod.getInstance()
+        })
         val consent = android.widget.CheckBox(this).apply {
             text = "I consciously download and update the app."
             textSize = 13f
