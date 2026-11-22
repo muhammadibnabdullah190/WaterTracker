@@ -1513,7 +1513,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             setPadding(0, dp(12), 0, dp(14))
         })
         val consent = android.widget.CheckBox(this).apply {
-            text = "I manually and consciously allow app updates."
+            text = "I consciously download and update the app."
             textSize = 13f
             setTextColor(android.graphics.Color.rgb(35, 75, 99))
             isChecked = false
